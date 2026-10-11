@@ -25,8 +25,6 @@
     <button class="tbtn" id="btnLayout" title="版面：預設 / 自訂">版面 ▾</button>
     <button class="tbtn" id="btnTheme">主題：深色</button>
     <button class="tbtn" id="btnCivitaiBrowse" title="搜尋、下載 Civitai 上的模型">☁ Civitai</button>
-    <button class="tbtn" id="btnReload" title="重新讀取模型清單">⟳</button>
-    <button class="tbtn" id="btnUpdate" title="更新 ComfyUI 本體與自訂節點（會先停止再重啟）">⬆ 更新</button>
     <a class="tbtn" href="/" target="_blank" title="ComfyUI 節點畫布">節點畫布</a>
     <a class="tbtn" href="http://127.0.0.1:8189/" target="_blank" title="啟動 / 停止 ComfyUI">啟動器</a>
   </div>
@@ -510,14 +508,6 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
   </div>
 </div>
 
-<!-- ===== 更新 ComfyUI ===== -->
-<div class="modal" id="updateModal" hidden>
-  <div class="modal-box update-box">
-    <header class="modal-head"><span class="card-title">更新 ComfyUI</span><span class="muted small" id="updateState"></span><button class="tbtn" id="btnCloseUpdate" style="margin-left:auto">✕</button></header>
-    <pre class="update-log" id="updateLog"></pre>
-  </div>
-</div>
-
 <div id="layoutMenu" class="image-menu" role="menu" hidden>
   <button id="btnLayoutDefault" role="menuitem">回到預設版面</button>
   <button id="btnLayoutSave" role="menuitem">把目前版面存成自訂</button>
@@ -550,7 +540,7 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
 </div>
 
 <div class="modal" id="missingModal" hidden>
-  <div class="modal-box update-box">
+  <div class="modal-box missing-box">
     <header class="modal-head"><span class="card-title">缺少模型</span><button class="tbtn" id="btnCloseMissing" style="margin-left:auto">✕</button></header>
     <div class="muted small modal-help">這張圖用到的下列檔案不在這台電腦上，其他參數已經載入。請先下載再生成，不然會用到別的模型。</div>
     <div class="missing-list" id="missingList"></div>

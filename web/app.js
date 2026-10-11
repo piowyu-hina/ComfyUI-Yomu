@@ -1746,28 +1746,6 @@
     fetch('/yomu/api/civitai/status').then(r => r.json()).then(s => { if (s.running) { $('btnCivitai').disabled = true; timer = setInterval(poll, 1200); } }).catch(() => {});
   }
 
-  function setupUpdate() {
-    const LAUNCHER = 'http://127.0.0.1:8189';
-    let timer = null;
-    const poll = async () => {
-      let u; try { u = await fetch(LAUNCHER + '/api/update/status').then(r => r.json()); } catch { $('updateState').textContent = '啟動器沒有回應'; return; }
-      $('updateLog').textContent = u.log.join('\n'); $('updateLog').scrollTop = $('updateLog').scrollHeight;
-      $('updateState').textContent = u.running ? '更新中…（ComfyUI 已暫停）' : (u.ok === null ? '' : (u.ok ? '完成，ComfyUI 重啟中' : '完成（有錯誤）'));
-      if (!u.running && timer) { clearInterval(timer); timer = null; }
-    };
-    $('btnUpdate').onclick = async () => {
-      if (state.pending.size) { toast('還有圖在生成，等它完成再更新', true); return; }
-      if (!confirm('更新 ComfyUI 本體與自訂節點（git pull + pip install）？\n更新期間 ComfyUI 會先停止，完成後自動重啟；這個頁面會暫時斷線，等它自己重連即可。')) return;
-      let r; try { r = await fetch(LAUNCHER + '/api/update', { method: 'POST' }).then(r => r.json()); }
-      catch { toast('連不到啟動器（8189），請先用桌面捷徑開啟 Yomu', true); return; }
-      if (!r.ok) { toast(r.msg, true); return; }
-      $('updateModal').hidden = false; $('updateLog').textContent = ''; $('updateState').textContent = '開始…';
-      poll(); if (!timer) timer = setInterval(poll, 1500);
-    };
-    $('btnCloseUpdate').onclick = () => { $('updateModal').hidden = true; };
-    closeOnBackdrop($('updateModal'), () => { $('updateModal').hidden = true; });
-  }
-
   // ================================================================ bindings
   function bind() {
     $('btnDeleteImage').onclick = async () => {
@@ -1815,7 +1793,6 @@
       } catch (e) { toast('無法開啟資料夾：' + e.message, true); }
     };
     $('btnGenerate').onclick = generate;
-    $('btnReload').onclick = () => loadModels().then(() => toast('清單已更新')).catch(() => toast('更新失敗', true));
     $('ckpt').onchange = updateCkptPreview;
     $('workflowSel').onchange = () => applyTemplate($('workflowSel').value);
     state.compatOnly = lsGet(LS_UI + '.compatOnly', true); $('compatOnly').checked = state.compatOnly;
@@ -1942,7 +1919,6 @@
     setupAutocomplete('neg', 'acPopupNeg');
     setupAssets();
     setupCivitai();
-    setupUpdate();
     setupGallery();
     openGallery();
     setupImageMenu();
