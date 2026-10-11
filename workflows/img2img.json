@@ -1,0 +1,344 @@
+{
+ "1": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": ""
+  },
+  "_meta": {
+   "title": "@ckpt"
+  }
+ },
+ "2": {
+  "class_type": "LoraLoader",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "clip": [
+    "1",
+    1
+   ],
+   "lora_name": "",
+   "strength_model": 1.0,
+   "strength_clip": 1.0
+  },
+  "_meta": {
+   "title": "@lora"
+  }
+ },
+ "3": {
+  "class_type": "CLIPSetLastLayer",
+  "inputs": {
+   "clip": [
+    "2",
+    1
+   ],
+   "stop_at_clip_layer": -2
+  },
+  "_meta": {
+   "title": "@clipskip"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@positive"
+  }
+ },
+ "5": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@negative"
+  }
+ },
+ "10": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": ""
+  },
+  "_meta": {
+   "title": "@load_image"
+  }
+ },
+ "11": {
+  "class_type": "ImageScale",
+  "inputs": {
+   "image": [
+    "10",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "width": 720,
+   "height": 1280,
+   "crop": "center"
+  },
+  "_meta": {
+   "title": "@resize"
+  }
+ },
+ "12": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "11",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "VAE Encode"
+  }
+ },
+ "6": {
+  "class_type": "RepeatLatentBatch",
+  "inputs": {
+   "samples": [
+    "12",
+    0
+   ],
+   "amount": 1
+  },
+  "_meta": {
+   "title": "@latent"
+  }
+ },
+ "7": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "28",
+    0
+   ],
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "latent_image": [
+    "6",
+    0
+   ],
+   "seed": 0,
+   "steps": 22,
+   "cfg": 3.75,
+   "sampler_name": "dpmpp_2m",
+   "scheduler": "karras",
+   "denoise": 0.6
+  },
+  "_meta": {
+   "title": "@sampler"
+  }
+ },
+ "8": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "7",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "@decode"
+  }
+ },
+ "20": {
+  "class_type": "UpscaleModelLoader",
+  "inputs": {
+   "model_name": ""
+  },
+  "_meta": {
+   "title": "@hires_model"
+  }
+ },
+ "21": {
+  "class_type": "ImageUpscaleWithModel",
+  "inputs": {
+   "upscale_model": [
+    "20",
+    0
+   ],
+   "image": [
+    "8",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@hires_upscale"
+  }
+ },
+ "22": {
+  "class_type": "ImageScale",
+  "inputs": {
+   "image": [
+    "21",
+    0
+   ],
+   "upscale_method": "bilinear",
+   "width": 1440,
+   "height": 2560,
+   "crop": "disabled"
+  },
+  "_meta": {
+   "title": "@hires_resize"
+  }
+ },
+ "23": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "22",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "@hires_encode"
+  }
+ },
+ "24": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "positive": [
+    "27",
+    0
+   ],
+   "negative": [
+    "27",
+    1
+   ],
+   "latent_image": [
+    "23",
+    0
+   ],
+   "seed": 0,
+   "steps": 20,
+   "cfg": 3.75,
+   "sampler_name": "dpmpp_2m",
+   "scheduler": "karras",
+   "denoise": 0.3
+  },
+  "_meta": {
+   "title": "@hires_sampler"
+  }
+ },
+ "25": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "24",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "@hires_decode"
+  }
+ },
+ "9": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "filename_prefix": "Yomu/%year%%month%%day%_%hour%%minute%%second%",
+   "images": [
+    "25",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@save"
+  }
+ },
+ "26": {
+  "class_type": "ControlNetLoader",
+  "_meta": {
+   "title": "@hires_cn_model"
+  },
+  "inputs": {
+   "control_net_name": "xinsir_controlnet_tile_sdxl_1.0.safetensors"
+  }
+ },
+ "27": {
+  "class_type": "ControlNetApplyAdvanced",
+  "_meta": {
+   "title": "@hires_cn"
+  },
+  "inputs": {
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "control_net": [
+    "26",
+    0
+   ],
+   "image": [
+    "22",
+    0
+   ],
+   "strength": 0.6,
+   "start_percent": 0.0,
+   "end_percent": 1.0,
+   "vae": [
+    "1",
+    2
+   ]
+  }
+ },
+ "28": {
+  "class_type": "PatchModelAddDownscale",
+  "_meta": {
+   "title": "@shrink"
+  },
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "block_number": 3,
+   "downscale_factor": 2.0,
+   "start_percent": 0.0,
+   "end_percent": 0.35,
+   "downscale_after_skip": true,
+   "downscale_method": "bicubic",
+   "upscale_method": "bislerp"
+  }
+ }
+}

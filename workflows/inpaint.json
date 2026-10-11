@@ -1,0 +1,216 @@
+{
+ "1": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": ""
+  },
+  "_meta": {
+   "title": "@ckpt"
+  }
+ },
+ "2": {
+  "class_type": "LoraLoader",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "clip": [
+    "1",
+    1
+   ],
+   "lora_name": "",
+   "strength_model": 1.0,
+   "strength_clip": 1.0
+  },
+  "_meta": {
+   "title": "@lora"
+  }
+ },
+ "3": {
+  "class_type": "CLIPSetLastLayer",
+  "inputs": {
+   "clip": [
+    "2",
+    1
+   ],
+   "stop_at_clip_layer": -2
+  },
+  "_meta": {
+   "title": "@clipskip"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@positive"
+  }
+ },
+ "5": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "3",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@negative"
+  }
+ },
+ "30": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": ""
+  },
+  "_meta": {
+   "title": "@load_image"
+  }
+ },
+ "31": {
+  "class_type": "GrowMask",
+  "inputs": {
+   "mask": [
+    "34",
+    0
+   ],
+   "expand": 8,
+   "tapered_corners": true
+  },
+  "_meta": {
+   "title": "@mask_grow"
+  }
+ },
+ "32": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "30",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "VAE Encode"
+  }
+ },
+ "6": {
+  "class_type": "SetLatentNoiseMask",
+  "inputs": {
+   "samples": [
+    "32",
+    0
+   ],
+   "mask": [
+    "31",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@latent"
+  }
+ },
+ "7": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "latent_image": [
+    "6",
+    0
+   ],
+   "seed": 0,
+   "denoise": 0.5,
+   "steps": 22,
+   "cfg": 3.75,
+   "sampler_name": "dpmpp_2m",
+   "scheduler": "karras"
+  },
+  "_meta": {
+   "title": "@sampler"
+  }
+ },
+ "8": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "7",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "@decode"
+  }
+ },
+ "33": {
+  "class_type": "ImageCompositeMasked",
+  "inputs": {
+   "destination": [
+    "30",
+    0
+   ],
+   "source": [
+    "8",
+    0
+   ],
+   "x": 0,
+   "y": 0,
+   "resize_source": false,
+   "mask": [
+    "31",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@composite"
+  }
+ },
+ "9": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "filename_prefix": "Yomu/%year%%month%%day%_%hour%%minute%%second%",
+   "images": [
+    "33",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@save"
+  }
+ },
+ "34": {
+  "class_type": "LoadImageMask",
+  "_meta": {
+   "title": "@load_mask"
+  },
+  "inputs": {
+   "image": "",
+   "channel": "red"
+  }
+ }
+}

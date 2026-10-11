@@ -1,0 +1,388 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "@ckpt"
+  }
+ },
+ "2": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "@ckpt_low"
+  }
+ },
+ "10": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "type": "wan"
+  },
+  "_meta": {
+   "title": "@clip"
+  }
+ },
+ "11": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "wan_2.1_vae.safetensors"
+  },
+  "_meta": {
+   "title": "@vae"
+  }
+ },
+ "12": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "@speed_lora_high"
+  }
+ },
+ "13": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "@speed_lora_low"
+  }
+ },
+ "3": {
+  "class_type": "LoraLoader",
+  "inputs": {
+   "model": [
+    "12",
+    0
+   ],
+   "clip": [
+    "10",
+    0
+   ],
+   "lora_name": "",
+   "strength_model": 1.0,
+   "strength_clip": 1.0
+  },
+  "_meta": {
+   "title": "@lora"
+  }
+ },
+ "14": {
+  "class_type": "ModelSamplingSD3",
+  "inputs": {
+   "model": [
+    "3",
+    0
+   ],
+   "shift": 5.0
+  },
+  "_meta": {
+   "title": "@shift"
+  }
+ },
+ "15": {
+  "class_type": "ModelSamplingSD3",
+  "inputs": {
+   "model": [
+    "84",
+    0
+   ],
+   "shift": 5.0
+  },
+  "_meta": {
+   "title": "@shift_low"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "3",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "@positive"
+  }
+ },
+ "5": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
+   "clip": [
+    "3",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "@negative"
+  }
+ },
+ "30": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": ""
+  },
+  "_meta": {
+   "title": "@load_image"
+  }
+ },
+ "6": {
+  "class_type": "WanImageToVideo",
+  "inputs": {
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "vae": [
+    "11",
+    0
+   ],
+   "width": 640,
+   "height": 896,
+   "length": 81,
+   "batch_size": 1,
+   "start_image": [
+    "30",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@latent"
+  }
+ },
+ "7": {
+  "class_type": "KSamplerAdvanced",
+  "inputs": {
+   "add_noise": "enable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "start_at_step": 0,
+   "end_at_step": 2,
+   "return_with_leftover_noise": "enable",
+   "model": [
+    "14",
+    0
+   ],
+   "positive": [
+    "6",
+    0
+   ],
+   "negative": [
+    "6",
+    1
+   ],
+   "latent_image": [
+    "6",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "@sampler"
+  }
+ },
+ "16": {
+  "class_type": "KSamplerAdvanced",
+  "inputs": {
+   "add_noise": "disable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "start_at_step": 2,
+   "end_at_step": 4,
+   "return_with_leftover_noise": "disable",
+   "model": [
+    "15",
+    0
+   ],
+   "positive": [
+    "6",
+    0
+   ],
+   "negative": [
+    "6",
+    1
+   ],
+   "latent_image": [
+    "7",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@sampler_low"
+  }
+ },
+ "8": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "16",
+    0
+   ],
+   "vae": [
+    "11",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@decode"
+  }
+ },
+ "17": {
+  "class_type": "RIFE VFI",
+  "inputs": {
+   "ckpt_name": "rife47.pth",
+   "frames": [
+    "8",
+    0
+   ],
+   "clear_cache_after_n_frames": 50,
+   "multiplier": 2,
+   "fast_mode": true,
+   "ensemble": true,
+   "scale_factor": 1.0
+  },
+  "_meta": {
+   "title": "@vfi"
+  }
+ },
+ "18": {
+  "class_type": "CreateVideo",
+  "inputs": {
+   "images": [
+    "17",
+    0
+   ],
+   "fps": 32,
+   "audio": [
+    "83",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@video"
+  }
+ },
+ "9": {
+  "class_type": "SaveVideo",
+  "inputs": {
+   "video": [
+    "18",
+    0
+   ],
+   "filename_prefix": "Yomu/video/%year%%month%%day%_%hour%%minute%%second%",
+   "format": "mp4",
+   "codec": "h264"
+  },
+  "_meta": {
+   "title": "@save"
+  }
+ },
+ "80": {
+  "class_type": "YomuResampleFrames",
+  "_meta": {
+   "title": "@audio_frames"
+  },
+  "inputs": {
+   "images": [
+    "17",
+    0
+   ],
+   "src_fps": 32.0,
+   "dst_fps": 25.0
+  }
+ },
+ "81": {
+  "class_type": "MMAudioModelLoader",
+  "_meta": {
+   "title": "@audio_model"
+  },
+  "inputs": {
+   "mmaudio_model": "mmaudio_large_44k_v2_fp16.safetensors",
+   "base_precision": "fp16"
+  }
+ },
+ "82": {
+  "class_type": "MMAudioFeatureUtilsLoader",
+  "_meta": {
+   "title": "@audio_utils"
+  },
+  "inputs": {
+   "vae_model": "mmaudio_vae_44k_fp16.safetensors",
+   "synchformer_model": "mmaudio_synchformer_fp16.safetensors",
+   "clip_model": "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+   "mode": "44k",
+   "precision": "fp16"
+  }
+ },
+ "83": {
+  "class_type": "MMAudioSampler",
+  "_meta": {
+   "title": "@audio"
+  },
+  "inputs": {
+   "mmaudio_model": [
+    "81",
+    0
+   ],
+   "feature_utils": [
+    "82",
+    0
+   ],
+   "images": [
+    "80",
+    0
+   ],
+   "duration": 5.0,
+   "steps": 25,
+   "cfg": 4.5,
+   "seed": 0,
+   "prompt": "",
+   "negative_prompt": "",
+   "mask_away_clip": false,
+   "force_offload": true
+  }
+ },
+ "84": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "13",
+    0
+   ],
+   "lora_name": "",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "@lora_low"
+  }
+ }
+}

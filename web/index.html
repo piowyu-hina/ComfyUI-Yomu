@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yomu</title>
+  <link rel="stylesheet" href="/yomu/static/style.css">
+</head>
+<body>
+
+<!-- ===== 頂列：品牌、分頁、狀態、工具 ===== -->
+<header class="topbar">
+  <div class="brand"><span class="brand-badge">✦</span><span class="brand-title">Yomu</span></div>
+  <nav class="tabs" id="modeTabs">
+    <button class="tab active" data-mode="txt2img">文生圖</button>
+    <button class="tab" data-mode="img2img">圖生圖</button>
+    <button class="tab" data-mode="inpaint">局部重繪</button>
+    <button class="tab" data-mode="txt2video">文生影片</button>
+    <button class="tab" data-mode="img2video">圖生影片</button>
+    <button class="tab" data-mode="tagger" title="丟一張圖，反推它的 Danbooru tag（WD14，本地）">反推</button>
+    <button class="tab" data-mode="upscale" title="影片放大（Video2X：Real-CUGAN / Real-ESRGAN / Anime4K）">放大</button>
+    <button class="tab" data-mode="join" title="把幾段影片接成一支（接著動的段落串起來），可以最後一起配音效">串接</button>
+  </nav>
+  <div class="topbar-right">
+    <button class="tbtn" id="btnLayout" title="版面：預設 / 自訂">版面 ▾</button>
+    <button class="tbtn" id="btnTheme">主題：深色</button>
+    <button class="tbtn" id="btnCivitaiBrowse" title="搜尋、下載 Civitai 上的模型">☁ Civitai</button>
+    <button class="tbtn" id="btnReload" title="重新讀取模型清單">⟳</button>
+    <button class="tbtn" id="btnUpdate" title="更新 ComfyUI 本體與自訂節點（會先停止再重啟）">⬆ 更新</button>
+    <a class="tbtn" href="/" target="_blank" title="ComfyUI 節點畫布">節點畫布</a>
+    <a class="tbtn" href="http://127.0.0.1:8189/" target="_blank" title="啟動 / 停止 ComfyUI">啟動器</a>
+  </div>
+</header>
+
+<main class="layout" id="layout">
+
+  <!-- ===== 左欄：設定卡片堆疊 ===== -->
+  <aside class="stack" id="stack">
+    <header class="column-head">參數 · Config</header>
+    <div class="stack-scroll">
+
+      <!-- 來源圖片（圖生圖） -->
+      <section class="card" id="cardSource" hidden>
+        <header class="card-head"><span class="card-title">來源圖片 · Source</span><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileInput" accept="image/*" hidden>
+            <div class="dropzone-empty" id="dropEmpty">
+              <div class="dz-icon">🖼</div>
+              <div>拖曳或點擊選擇圖片</div>
+              <div class="muted small">也可 Ctrl+V 貼上</div>
+            </div>
+            <img id="sourcePreview" alt="" hidden>
+            <div class="dropzone-info" id="sourceInfo" hidden></div>
+          </div>
+          <div class="field" id="fieldEndImage" hidden>
+            <label>結尾圖（影片最後一格會是這張）</label>
+            <div class="dropzone mini-drop" id="endDrop" data-target="end">
+              <input type="file" accept="image/*" hidden>
+              <div class="dropzone-empty"><div>拖曳或點擊選擇結尾圖</div></div>
+              <img alt="" hidden>
+              <div class="dropzone-info" hidden></div>
+            </div>
+          </div>
+          <label class="check" id="fieldResize"><input type="checkbox" id="resizeToTarget" checked><span>縮放／裁切到取樣尺寸（取消則沿用原圖）</span></label>
+          <div class="field" id="fieldMaskGrow" hidden>
+            <div class="label-row"><label>遮罩外擴 (px)</label></div>
+            <input type="number" id="maskGrow" min="0" max="128" step="1" value="12">
+            <div class="muted small">重繪範圍會比你塗的多這麼多像素，邊界比較自然。在右邊預覽區直接塗，滾輪調筆刷。</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Model -->
+      <section class="card">
+        <header class="card-head"><span class="card-title">模型</span><button class="mini" id="btnLibrary" title="瀏覽 Checkpoint / LoRA / Embedding，含預覽圖與觸發詞">🗂 模型庫</button><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div class="field">
+            <label>工作流</label>
+            <select id="workflowSel"></select>
+          </div>
+          <div class="field">
+            <label id="ckptLabel">Checkpoint</label>
+            <select id="ckpt" hidden><option value="">讀取中…</option></select>
+            <div class="ckpt-box" id="ckptPreview" title="點一下開模型庫換模型" tabindex="0" role="button">
+              <img id="ckptPreviewImg" alt="">
+              <div class="ckpt-meta"><b id="ckptName">讀取中…</b><span id="ckptMeta"></span></div>
+              <span class="ckpt-chev">▸</span>
+            </div>
+            <div class="muted small" id="ckptLow" hidden></div>
+            <label class="check" id="fieldFp8" hidden title="模型權重以 fp8 載入：更快、省一半 VRAM；同 seed 的圖會有微小差異"><input type="checkbox" id="fp8"><span>快速模式（fp8 權重）</span></label>
+          </div>
+          <div class="row">
+            <div class="field grow">
+              <label>Clip Skip</label>
+              <select id="clipskip">
+                <option value="-1">1</option>
+                <option value="-2" selected>2</option>
+                <option value="-3">3</option>
+              </select>
+            </div>
+          </div>
+          <div class="subhead">
+            <span>Extra Networks（LoRA）</span>
+            <span class="subhead-actions">
+              <button class="mini" id="btnAddLora" title="從模型庫挑 LoRA">＋ 加入</button>
+            </span>
+          </div>
+          <div class="lora-list" id="loraList"></div>
+          <div class="muted small" id="loraEmpty">尚未加入 LoRA。權重只作用在 model，clip 固定 1.0。</div>
+        </div>
+      </section>
+
+      <!-- Sampler -->
+      <section class="card">
+        <header class="card-head"><span class="card-title">取樣</span><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div class="field">
+            <label>解析度</label>
+            <div class="row">
+              <select id="presetSel" class="grow">
+                <option value="720x1280">720 × 1280（9:16）</option>
+                <option value="1280x720">1280 × 720（16:9）</option>
+                <option value="1024x1024">1024 × 1024（1:1）</option>
+                <option value="768x1024">768 × 1024（3:4）</option>
+                <option value="1024x768">1024 × 768（4:3）</option>
+                <option value="640x896">640 × 896（5:7）</option>
+                <option value="832x1216">832 × 1216（2:3）</option>
+                <option value="1216x832">1216 × 832（3:2）</option>
+                <option value="custom">自訂…</option>
+              </select>
+              <button class="ibtn" id="btnSwap" title="交換寬高">⇄</button>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field grow"><label>寬</label><input type="number" id="width" min="256" max="2048" step="8" value="720"></div>
+            <div class="field grow"><label>高</label><input type="number" id="height" min="256" max="2048" step="8" value="1280"></div>
+          </div>
+          <label class="check" id="fieldShrink" title="Deep Shrink：前 35% 步數在半尺寸決定構圖，再回全尺寸畫細節。直出 1536 以上不會雙頭、五官拉開" hidden><input type="checkbox" id="shrinkOn"><span>大尺寸防崩（Deep Shrink）</span></label>
+          <div class="field">
+            <div class="label-row"><label>步數</label><b id="stepsVal">22</b></div>
+            <input type="range" id="steps" min="1" max="60" step="1" value="22">
+          </div>
+          <div class="field">
+            <div class="label-row"><label>CFG Scale</label><b id="cfgVal">3.75</b></div>
+            <input type="range" id="cfg" min="1" max="15" step="0.25" value="3.75">
+          </div>
+          <div class="field" id="fieldDenoise" hidden>
+            <div class="label-row"><label>重繪幅度 (Denoise)</label><b id="denoiseVal">0.60</b></div>
+            <input type="range" id="denoise" min="0.05" max="1" step="0.05" value="0.6">
+          </div>
+          <div class="row">
+            <div class="field grow"><label>Sampler</label><select id="sampler"></select></div>
+            <div class="field grow"><label>Scheduler</label><select id="scheduler"></select></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Addon: Hires Fix -->
+      <section class="card addon">
+        <header class="card-head">
+          <span class="card-title">Hires Fix</span>
+          <span class="muted small" id="hiresTarget"></span>
+          <button class="chev" data-collapse>▾</button>
+        </header>
+        <div class="card-body" id="hiresBody">
+          <label class="check"><input type="checkbox" id="hiresOn"><span>啟用 Hires Fix</span></label>
+          <div class="field"><label>放大模型</label><select id="hiresModel"></select></div>
+          <div class="field">
+            <div class="label-row"><label>倍率</label><b id="hiresScaleVal">2.0</b></div>
+            <input type="range" id="hiresScale" min="1.25" max="4" step="0.25" value="2">
+          </div>
+          <div class="row">
+            <div class="field grow">
+              <div class="label-row"><label>步數</label><b id="hiresStepsVal">20</b></div>
+              <input type="range" id="hiresSteps" min="1" max="60" step="1" value="20">
+            </div>
+            <div class="field grow">
+              <div class="label-row"><label>Denoise</label><b id="hiresDenoiseVal">0.30</b></div>
+              <input type="range" id="hiresDenoise" min="0.05" max="1" step="0.01" value="0.3">
+            </div>
+          </div>
+          <label class="check" id="fieldHiresCn" title="ControlNet Tile：重畫時強迫每一塊跟放大前一樣，只補細節不移動五官。開了 Denoise 可以放心開到 0.5" hidden><input type="checkbox" id="hiresCn" checked><span>鎖定結構（ControlNet Tile）</span></label>
+        </div>
+      </section>
+
+      <!-- Addon: ADetailer -->
+      <section class="card addon" id="cardAdet">
+        <header class="card-head">
+          <span class="card-title">ADetailer 修手</span>
+          <button class="chev" data-collapse>▾</button>
+        </header>
+        <div class="card-body">
+          <label class="check"><input type="checkbox" id="adetHand"><span>修手（交給 Anima 重畫）</span></label>
+          <div id="adetHandOpts">
+            <div class="field"><label>修手用的 Anima 模型</label><select id="adetHandModel"></select></div>
+            <div class="field">
+              <div class="label-row"><label>修手幅度</label><b id="adetHandDenoiseVal">0.50</b></div>
+              <input type="range" id="adetHandDenoise" min="0.2" max="0.9" step="0.05" value="0.5">
+            </div>
+          </div>
+          <div class="muted small">在 Hires Fix 之前、原尺寸上修（便宜又準，Hires 的鎖定結構會把修好的手保住）；每張多 5–10 秒。偵測：hand_yolov8s。</div>
+        </div>
+      </section>
+
+      <!-- Seed -->
+      <section class="card">
+        <header class="card-head"><span class="card-title">Seed</span><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div class="row">
+            <input type="number" id="seed" min="0" step="1" value="0" class="grow">
+            <button class="ibtn" id="btnRandomSeed" title="立刻換一個隨機 seed">🎲</button>
+            <button class="ibtn" id="btnLastSeed" title="用上一張的 seed">↺</button>
+          </div>
+          <label class="check"><input type="checkbox" id="lockSeed"><span>鎖定 seed（不勾 = 每次隨機）</span></label>
+        </div>
+      </section>
+
+      <!-- Batch -->
+      <section class="card" id="cardVideo" hidden>
+        <header class="card-head"><span class="card-title">影片</span><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div class="row">
+            <div class="field grow" id="fieldFrames" hidden>
+              <div class="label-row"><label>幀數</label><b id="framesVal"></b></div>
+              <input type="number" id="frames" min="5" max="241" step="4" value="81">
+            </div>
+          </div>
+          <div class="field" id="fieldAudio" hidden>
+            <label class="check"><input type="checkbox" id="audioOn"><span>配音效（MMAudio 看畫面自動配，每段多 15–30 秒）</span></label>
+            <input type="text" id="audioPrompt" placeholder="想要什麼聲音？留白＝看畫面決定；例如 footsteps, wind, rain" style="margin-top:6px">
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+
+  </aside>
+
+  <div class="vsplit" id="vsplit" title="拖曳調整寬度"></div>
+
+  <!-- ===== 主區：提示詞 + 預覽 ===== -->
+  <section class="main" id="main">
+
+    <section class="card prompt-card" id="promptCard">
+      <header class="card-head">
+        <span class="card-title">提示詞 · Prompt</span>
+        <span class="muted small">Tab 補完標籤 · <span class="tk-cmt">#註解</span> · <span class="tk-emb">embedding:名稱</span></span>
+      </header>
+      <div class="card-body prompt-body">
+        <div class="prompt-block grow">
+          <div class="label-row"><label>正面</label></div>
+          <div class="ac-wrap grow">
+            <div class="editor grow">
+              <pre class="hl" id="posHl" aria-hidden="true"></pre>
+              <textarea id="pos" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="masterpiece, best quality, 1girl, …"></textarea>
+            </div>
+            <div class="ac-popup" id="acPopup" hidden></div>
+          </div>
+        </div>
+        <div class="prompt-block neg">
+          <label>負面</label>
+          <div class="ac-wrap grow">
+          <div class="editor grow">
+            <pre class="hl" id="negHl" aria-hidden="true"></pre>
+            <textarea id="neg" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">embedding:lazyneg, lazyneg, embedding:lazyhand, lazyhand,
+worst quality, low quality, normal quality, lowres, blurry,
+bad anatomy, bad hands, malformed hands, deformed fingers, extra fingers, missing fingers, fused fingers,
+extra limbs, missing limbs, mutated hands, poorly drawn face, poorly drawn hands, deformed, disfigured, ugly,
+jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textarea>
+          </div>
+          <div class="ac-popup" id="acPopupNeg" hidden></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Generate -->
+    <footer class="stack-foot">
+      <div class="progress">
+        <div class="progress-text"><span id="statusText">就緒</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <div class="row">
+        <button class="btn-generate grow" id="btnGenerate">✦ 生成</button>
+      </div>
+    </footer>
+  </section>
+    <div class="vsplit" id="psplit" title="拖曳調整提示詞寬度"></div>
+
+    <section class="card viewer-card">
+      <header class="card-head">
+        <span class="card-title">圖片 · Image Output</span>
+        <span class="muted small meta" id="metaBar" hidden></span>
+        <span class="viewer-tools" id="viewerTools" hidden>
+          <button class="mini" id="btnFitImage" title="滾輪縮放；點此還原適合視窗">100% · 適合視窗</button>
+          <button class="mini" id="btnEditMask" title="回到遮罩編輯" hidden>✎ 編輯遮罩</button>
+          <button class="mini" id="btnResultAsSource" title="把這張結果當成新的來源圖，繼續修" hidden>↻ 當作來源</button>
+        </span>
+      </header>
+      <div class="viewer" id="viewer">
+        <div class="viewer-empty" id="viewerEmpty">
+          <div class="viewer-empty-icon">✦</div>
+          <div>輸入提示詞後按「生成」</div>
+          <div class="muted small">把生成過的 PNG 拖到畫面任何位置可以載入它的參數</div>
+        </div>
+        <img id="mainImage" alt="" hidden>
+        <video id="mainVideo" controls autoplay loop muted hidden></video>
+
+        <!-- 局部重繪：遮罩編輯 -->
+        <div class="mask-stage" id="maskStage" hidden>
+          <div class="mask-wrap" id="maskWrap">
+            <img id="maskImg" alt="">
+            <canvas id="maskCanvas"></canvas>
+            <div class="mask-cursor" id="maskCursor"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- 反推分頁（取代左邊參數＋提示詞＋預覽，右邊圖庫留著方便拖圖） -->
+    <section class="card tagger-page" id="taggerPage" hidden>
+      <header class="card-head"><span class="card-title">🏷 反推提示詞</span><span class="muted small">WD14 Tagger · 本地跑，幾秒鐘</span></header>
+      <div class="tg-body">
+        <div class="dropzone" id="tgDrop">
+          <input type="file" accept="image/*" hidden>
+          <div class="dropzone-empty"><div class="dz-icon">🖼</div><div>拖一張圖進來（右邊圖庫的也可以）或點擊選擇</div><div class="muted small">也可 Ctrl+V 貼上</div></div>
+          <img alt="" hidden>
+        </div>
+        <div class="tg-right">
+          <label>反推出來的 tag（可以直接改）</label>
+          <textarea id="tgResult" spellcheck="false" placeholder="放圖後自動反推…"></textarea>
+          <div class="row">
+            <button class="btn-generate grow" id="tgFill" style="height:36px;font-size:14px">填進正面提示詞（加在最下面）</button>
+            <button class="mini" id="tgReplace" title="清掉正面提示詞，只留這些 tag">取代整段</button>
+            <button class="mini" id="tgCopy">複製</button>
+          </div>
+          <div class="muted small">填進去後會自動跳回你原本的分頁。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 放大分頁：外部 Video2X 跑，不佔 ComfyUI -->
+    <section class="card tagger-page" id="upPage" hidden>
+      <header class="card-head"><span class="card-title">🔍 影片放大</span><span class="muted small">Video2X · 顯卡 Vulkan 跑，不會卡到生圖</span></header>
+      <div class="tg-body">
+        <div class="dropzone" id="upDrop">
+          <input type="file" accept="video/mp4,video/webm,video/x-matroska,.mp4,.webm,.mkv" hidden>
+          <div class="dropzone-empty"><div class="dz-icon">🎬</div><div>拖一支影片進來（右邊圖庫的也可以）或點擊選擇</div></div>
+          <video id="upSrcVideo" controls muted loop hidden></video>
+          <div class="dropzone-info" hidden></div>
+        </div>
+        <div class="tg-right">
+          <div class="row">
+            <div class="field grow"><label>引擎</label>
+              <select id="upEngine">
+                <option value="realesrgan">Real-ESRGAN 動漫影片版（推薦）</option>
+                <option value="realcugan">Real-CUGAN（線條更乾淨，但這台跑很慢）</option>
+                <option value="libplacebo">Anime4K（最快、效果最淡）</option>
+              </select>
+            </div>
+            <div class="field"><label>倍率</label>
+              <select id="upScale"><option value="2">×2</option><option value="3">×3</option><option value="4">×4</option></select>
+            </div>
+            <div class="field" id="upNoiseField" hidden><label>降噪</label>
+              <select id="upNoise"><option value="-1">不降噪</option><option value="0" selected>弱</option><option value="1">中</option><option value="2">強</option><option value="3">最強</option></select>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn-generate grow" id="upGo" style="height:36px;font-size:14px" disabled>開始放大</button>
+            <button class="btn-cancel" id="upCancel" style="width:auto;padding:0 14px;height:36px" hidden>中止</button>
+          </div>
+          <div class="progress-track" id="upProgWrap" hidden><div class="progress-fill" id="upProg"></div></div>
+          <div class="muted small" id="upStatus">先放一支影片</div>
+          <div class="up-result" id="upResult" hidden>
+            <label>結果（已存進圖庫）</label>
+            <video id="upOutVideo" controls loop></video>
+          </div>
+          <div class="muted small">Real-ESRGAN 動漫影片版是專門為動漫影片訓練的，閃爍最少；5 秒影片約 15–40 秒。倍率 ×2 就夠，×4 只是更大不會更清楚。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 串接分頁 -->
+    <section class="card tagger-page" id="joinPage" hidden>
+      <header class="card-head"><span class="card-title">🔗 影片串接</span><span class="muted small">依順序接成一支；尺寸不同會縮到第一支的大小，fps 跟第一支</span></header>
+      <div class="tg-body">
+        <div class="jn-left">
+          <div class="dropzone" id="jnDrop" style="min-height:64px">
+            <input type="file" accept="video/mp4,video/webm,video/x-matroska,.mp4,.webm,.mkv" multiple hidden>
+            <div class="dropzone-empty"><div>把影片拖進來（右邊圖庫的可以一次拖一支）或點擊選擇；也可以右鍵影片「加進串接清單」</div></div>
+          </div>
+          <div class="jn-list" id="jnList"></div>
+        </div>
+        <div class="tg-right">
+          <label class="check"><input type="checkbox" id="jnAudio"><span>串完一起配音效（MMAudio，整支聲音才會連續）</span></label>
+          <input type="text" id="jnAudioPrompt" placeholder="想要什麼聲音？留白＝看畫面決定">
+          <div class="row">
+            <button class="btn-generate grow" id="jnGo" style="height:36px;font-size:14px" disabled>開始串接</button>
+            <button class="mini" id="jnClear">清空清單</button>
+          </div>
+          <div class="muted small" id="jnStatus">清單是空的</div>
+          <div class="up-result" id="jnResult" hidden>
+            <label>結果（已存進圖庫）</label>
+            <video id="jnOutVideo" controls loop></video>
+          </div>
+          <div class="muted small">原本各段的聲音不會保留（接著動的段落本來就沒聲音）；要聲音就勾上面那個，做完再到「放大」分頁放大也可以。</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="vsplit" id="gsplit" title="拖曳調整圖庫寬度"></div>
+        <div class="gallery-view" id="galleryView">
+          <header class="card-head">
+            <span class="card-title">所有圖片</span>
+            <span class="muted small" id="gvCount"></span>
+            <button class="mini" id="gvRefresh" title="重新掃描 output 資料夾" style="margin-left:auto">⟳</button>
+            <input type="text" id="gvSearch" hidden>
+          </header>
+          <div class="gv-scroll" id="gvScroll">
+            <div class="gv-spacer" id="gvSpacer"></div>
+            <div class="gv-cells" id="gvCells"></div>
+          </div>
+        </div>
+</main>
+
+<!-- ===== 底部狀態列 ===== -->
+<footer class="statusbar">
+  <span id="sbConn">●</span>
+  <span id="sbQueue"></span>
+  <span class="sb-sep"></span>
+  <span id="sbModel" class="sb-grow"></span>
+  <span id="sbGallery"></span>
+  <span class="sb-sep"></span>
+  <span class="muted">Ctrl+Enter 生成 · Ctrl+S 另存 · Tab 補完</span>
+</footer>
+
+<!-- ===== LoRA / Embedding 瀏覽器 ===== -->
+<div class="modal" id="assetModal" hidden>
+  <div class="modal-box">
+    <header class="modal-head">
+      <div class="tabs" id="assetTabs">
+        <button class="tab" data-kind="checkpoints">Checkpoint <span class="count" id="ckptCount"></span></button>
+        <button class="tab active" data-kind="loras">LoRA <span class="count" id="loraCount"></span></button>
+        <button class="tab" data-kind="embeddings">Embedding <span class="count" id="embeddingCount"></span></button>
+      </div>
+      <label class="check small" title="只列出跟目前工作流同一架構的模型（依 Civitai 的 Base Model 或檔名判斷）"><input type="checkbox" id="compatOnly" checked><span>只顯示相容</span></label>
+      <input type="text" id="assetSearch" placeholder="搜尋…">
+      <button class="tbtn" id="btnCivitai" title="用檔案 hash 到 Civitai 找預覽圖、觸發詞、底模（只補缺的）">☁ Civitai 抓圖</button>
+      <span class="muted small" id="civitaiState"></span>
+      <button class="tbtn" id="btnCloseAssets">✕</button>
+    </header>
+    <div class="muted small modal-help" id="assetHelp">點卡片加入／移除 LoRA。</div>
+    <div class="asset-grid" id="assetGrid"></div>
+  </div>
+</div>
+
+<!-- ===== Civitai 瀏覽器 ===== -->
+<div class="modal" id="civitaiModal" hidden>
+  <div class="modal-box cv-box">
+    <header class="modal-head cv-head">
+      <span class="card-title">☁ Civitai</span>
+      <input type="text" id="cvSearch" placeholder="搜尋模型…（Enter）">
+      <button class="tbtn" id="cvGo">搜尋</button>
+      <select id="cvType" title="類型">
+        <option value="Checkpoint,LORA,TextualInversion">全部類型</option>
+        <option value="Checkpoint">Checkpoint</option>
+        <option value="LORA">LoRA</option>
+        <option value="TextualInversion">Embedding</option>
+        <option value="Upscaler">放大模型（Hires Fix 用）</option>
+        <option value="VAE">VAE</option>
+        <option value="Wildcards">Wildcards（字卡）</option>
+      </select>
+      <select id="cvBase" title="底模">
+        <option value="auto">底模：跟目前工作流</option>
+        <option value="all">底模：全部</option>
+        <option value="Illustrious">Illustrious</option>
+        <option value="NoobAI">NoobAI</option>
+        <option value="Pony">Pony</option>
+        <option value="SDXL 1.0">SDXL 1.0</option>
+        <option value="SD 1.5">SD 1.5</option>
+        <option value="Anima">Anima</option>
+        <option value="Flux.1 D">Flux.1 D</option>
+      </select>
+      <select id="cvSort" title="排序">
+        <option value="Most Downloaded">最多下載</option>
+        <option value="Highest Rated">評價最高</option>
+        <option value="Newest">最新</option>
+      </select>
+      <label class="check small"><input type="checkbox" id="cvNsfw"><span>NSFW</span></label>
+      <button class="mini" id="cvToggleDl" title="下載清單">⬇ 下載</button>
+      <button class="mini" id="cvKey" title="設定 API key"><span id="cvKeyState">API key</span></button>
+      <button class="tbtn" id="cvClose">✕</button>
+    </header>
+    <div class="cv-body">
+      <div class="cv-results">
+        <div class="cv-status muted small" id="cvStatus"></div>
+        <div class="cv-grid" id="cvGrid"></div>
+        <button class="tbtn cv-more" id="cvMore" hidden>載入更多</button>
+      </div>
+      <div class="cv-detail" id="cvDetail" hidden></div>
+      <div class="cv-downloads" id="cvDownloads" hidden>
+        <div class="card-title">下載</div>
+        <div id="cvDlList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 更新 ComfyUI ===== -->
+<div class="modal" id="updateModal" hidden>
+  <div class="modal-box update-box">
+    <header class="modal-head"><span class="card-title">更新 ComfyUI</span><span class="muted small" id="updateState"></span><button class="tbtn" id="btnCloseUpdate" style="margin-left:auto">✕</button></header>
+    <pre class="update-log" id="updateLog"></pre>
+  </div>
+</div>
+
+<div id="layoutMenu" class="image-menu" role="menu" hidden>
+  <button id="btnLayoutDefault" role="menuitem">回到預設版面</button>
+  <button id="btnLayoutSave" role="menuitem">把目前版面存成自訂</button>
+  <button id="btnLayoutApply" role="menuitem">套用自訂版面</button>
+</div>
+
+<div id="imageMenu" class="image-menu" role="menu" hidden>
+  <button id="btnShowFolder" role="menuitem">開啟所在資料夾</button>
+  <button id="btnSave" role="menuitem">另存圖片</button>
+  <a id="btnOpen" role="menuitem" target="_blank">開啟原圖</a>
+  <button id="btnAnimate" role="menuitem" title="用這張圖做圖生影片">🎬 讓它動起來</button>
+  <button id="btnJoinVideo" role="menuitem" title="加到「串接」分頁的清單" hidden>➕ 加進串接清單</button>
+  <button id="btnUpscaleVideo" role="menuitem" title="到「放大」分頁處理這支影片" hidden>🔍 放大這支影片</button>
+  <button id="btnDeleteImage" role="menuitem" title="移到 Windows 資源回收筒">刪除圖片</button>
+</div>
+
+<div id="imageOverlay" class="image-overlay" hidden>
+  <img id="fullImage" alt="原圖">
+  <video id="fullVideo" controls autoplay loop hidden></video>
+  <div class="image-caption" id="fullCaption"></div>
+</div>
+
+<!-- 遮罩工具列（局部重繪時浮在預覽區上方） -->
+<div class="mask-tools" id="maskTools" hidden>
+  <label>筆刷 <input type="range" id="maskBrush" min="4" max="300" value="40"> <b id="maskBrushVal">40</b></label>
+  <label class="check"><input type="checkbox" id="maskEraser"><span>橡皮擦</span></label>
+  <button class="mini" id="maskInvert">反轉</button>
+  <button class="mini" id="maskClear">清除</button>
+  <span class="muted small">塗紅色的地方會被重畫</span>
+</div>
+
+<div class="modal" id="missingModal" hidden>
+  <div class="modal-box update-box">
+    <header class="modal-head"><span class="card-title">缺少模型</span><button class="tbtn" id="btnCloseMissing" style="margin-left:auto">✕</button></header>
+    <div class="muted small modal-help">這張圖用到的下列檔案不在這台電腦上，其他參數已經載入。請先下載再生成，不然會用到別的模型。</div>
+    <div class="missing-list" id="missingList"></div>
+  </div>
+</div>
+
+<div class="drop-all" id="dropAll" hidden>放開以載入圖片資訊</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/yomu/static/pnginfo.js"></script>
+<script src="/yomu/static/app.js"></script>
+<script src="/yomu/static/civitai.js"></script>
+<script src="/yomu/static/inpaint.js"></script>
+</body>
+</html>

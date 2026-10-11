@@ -1,0 +1,249 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "@ckpt"
+  }
+ },
+ "10": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_06b_base.safetensors",
+   "type": "stable_diffusion"
+  },
+  "_meta": {
+   "title": "@clip"
+  }
+ },
+ "11": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_vae.safetensors"
+  },
+  "_meta": {
+   "title": "@vae"
+  }
+ },
+ "2": {
+  "class_type": "LoraLoader",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "clip": [
+    "10",
+    0
+   ],
+   "lora_name": "",
+   "strength_model": 1.0,
+   "strength_clip": 1.0
+  },
+  "_meta": {
+   "title": "@lora"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "2",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "@positive"
+  }
+ },
+ "5": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": "",
+   "clip": [
+    "2",
+    1
+   ]
+  },
+  "_meta": {
+   "title": "@negative"
+  }
+ },
+ "6": {
+  "class_type": "EmptyLatentImage",
+  "inputs": {
+   "width": 1024,
+   "height": 1024,
+   "batch_size": 1
+  },
+  "_meta": {
+   "title": "@latent"
+  }
+ },
+ "7": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "latent_image": [
+    "6",
+    0
+   ],
+   "seed": 0,
+   "steps": 30,
+   "cfg": 4.0,
+   "sampler_name": "er_sde",
+   "scheduler": "simple",
+   "denoise": 1.0
+  },
+  "_meta": {
+   "title": "@sampler"
+  }
+ },
+ "8": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "7",
+    0
+   ],
+   "vae": [
+    "11",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@decode"
+  }
+ },
+ "20": {
+  "class_type": "UpscaleModelLoader",
+  "inputs": {
+   "model_name": ""
+  },
+  "_meta": {
+   "title": "@hires_model"
+  }
+ },
+ "21": {
+  "class_type": "ImageUpscaleWithModel",
+  "inputs": {
+   "upscale_model": [
+    "20",
+    0
+   ],
+   "image": [
+    "8",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@hires_upscale"
+  }
+ },
+ "22": {
+  "class_type": "ImageScale",
+  "inputs": {
+   "image": [
+    "21",
+    0
+   ],
+   "upscale_method": "bilinear",
+   "width": 2048,
+   "height": 2048,
+   "crop": "disabled"
+  },
+  "_meta": {
+   "title": "@hires_resize"
+  }
+ },
+ "23": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "22",
+    0
+   ],
+   "vae": [
+    "11",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@hires_encode"
+  }
+ },
+ "24": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "positive": [
+    "4",
+    0
+   ],
+   "negative": [
+    "5",
+    0
+   ],
+   "latent_image": [
+    "23",
+    0
+   ],
+   "seed": 0,
+   "steps": 20,
+   "cfg": 4.0,
+   "sampler_name": "er_sde",
+   "scheduler": "simple",
+   "denoise": 0.3
+  },
+  "_meta": {
+   "title": "@hires_sampler"
+  }
+ },
+ "25": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "24",
+    0
+   ],
+   "vae": [
+    "11",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@hires_decode"
+  }
+ },
+ "9": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "filename_prefix": "Yomu/%year%%month%%day%_%hour%%minute%%second%",
+   "images": [
+    "25",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "@save"
+  }
+ }
+}
