@@ -18,24 +18,41 @@
     return { types: $('cvType').value, baseModels: noBase ? '' : bases.join(','), sort: $('cvSort').value, nsfw: $('cvNsfw').checked ? '1' : '0', query: $('cvSearch').value.trim() };
   }
 
+  let searchAbort = null;
+  /** 貼 Civitai 網址（或模型編號）就直接開那個模型，不用搜尋 */
+  async function openByLink(text) {
+    const m = text.match(/civitai\.com\/models\/(\d+)(?:[^\s]*?[?&]modelVersionId=(\d+))?/i) || text.match(/^(\d{3,})$/);
+    if (!m) return false;
+    const r = await fetch('/yomu/api/civitai/model?id=' + m[1]).then(r => r.json()).catch(() => null);
+    if (!r?.ok) return false;
+    S.items = [r.model]; $('cvGrid').innerHTML = ''; renderCard(r.model); S.cursor = null; $('cvMore').hidden = true;
+    $('cvStatus').textContent = '依連結找到：' + r.model.name;
+    openDetail(r.model, m[2] && Number(m[2]));
+    return true;
+  }
+
   async function search(more = false) {
-    if (S.loading) return;
+    if (more && S.loading) return;
+    searchAbort?.abort();                       // 改了條件就放掉上一個還沒回來的搜尋，不要卡住
+    searchAbort = new AbortController();
     if (!more) { S.items = []; S.cursor = null; $('cvGrid').innerHTML = ''; }
     const seq = ++S.seq;
     S.loading = true; $('cvStatus').textContent = '搜尋中…'; $('cvMore').disabled = true;
     const f = filters();
-    const p = new URLSearchParams({ ...f, limit: '24' });
-    if (S.cursor) p.set('cursor', S.cursor);
     try {
-      const r = await fetch('/yomu/api/civitai/search?' + p).then(r => r.json());
+      if (!more && await openByLink(f.query)) return;
+      const p = new URLSearchParams({ ...f, limit: '24' });
+      if (S.cursor) p.set('cursor', S.cursor);
+      const r = await fetch('/yomu/api/civitai/search?' + p, { signal: searchAbort.signal }).then(r => r.json());
       if (seq !== S.seq) return;
       if (!r.ok) throw new Error(r.msg);
-      S.items.push(...r.items); S.cursor = r.nextCursor || null;
-      r.items.forEach(renderCard);
+      const fresh = r.items.filter(m => !S.items.some(x => x.id === m.id));   // 合併原詞與加底線的結果後，「載入更多」可能有重複
+      S.items.push(...fresh); S.cursor = r.nextCursor || null;
+      fresh.forEach(renderCard);
       $('cvStatus').textContent = S.items.length ? `${S.items.length} 個結果${S.cursor ? '' : '（到底了）'}` : '沒有結果';
       $('cvMore').hidden = !S.cursor;
-    } catch (e) { $('cvStatus').textContent = '搜尋失敗：' + e.message; }
-    finally { S.loading = false; $('cvMore').disabled = false; }
+    } catch (e) { if (e.name !== 'AbortError' && seq === S.seq) $('cvStatus').textContent = '搜尋失敗：' + e.message; }
+    finally { if (seq === S.seq) { S.loading = false; $('cvMore').disabled = false; } }
   }
 
   function renderCard(m) {
@@ -52,7 +69,7 @@
     $('cvGrid').appendChild(el);
   }
 
-  function openDetail(m) {
+  function openDetail(m, versionId) {
     S.detail = m;
     const box = $('cvDetail');
     box.hidden = false;
@@ -74,7 +91,9 @@
       </div>`;
     $('cvBack').onclick = () => { box.hidden = true; S.detail = null; };
     $('cvVersion').onchange = () => renderVersion(m, m.versions[$('cvVersion').value]);
-    renderVersion(m, m.versions[0]);
+    const start = Math.max(0, m.versions.findIndex(v => v.id === versionId));   // 網址帶 modelVersionId 就直接選那個版本
+    $('cvVersion').value = String(start);
+    renderVersion(m, m.versions[start]);
     // 補抓完整版本清單（列表 API 可能只給一部分）
     fetch('/yomu/api/civitai/model?id=' + m.id).then(r => r.json()).then(r => {
       if (!r.ok || S.detail !== m || r.model.versions.length <= m.versions.length) return;

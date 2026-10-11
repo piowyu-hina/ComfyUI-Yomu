@@ -8,6 +8,7 @@ Civitai 模型瀏覽器：搜尋、看版本、下載到對的資料夾（背景
   GET  /yomu/api/civitai/downloads              下載清單與進度
   POST /yomu/api/civitai/download/cancel?id=
 """
+import asyncio
 import json
 import os
 import re
@@ -225,6 +226,11 @@ def _download_job(job):
         job["finished"] = time.time()
 
 
+SEARCH_PAGES = 5      # 一次搜尋最多往下翻幾頁來湊滿結果
+SEARCH_TTL = 60       # 秒
+_search_cache = {}    # 搜尋條件 -> (時間, Civitai 回的資料)
+
+
 def register(routes):
     @routes.get("/yomu/api/settings")
     async def get_settings(request):
@@ -240,12 +246,51 @@ def register(routes):
         save_settings(d)
         return web.json_response({"ok": True})
 
+    async def fetch_page(params):
+        """一頁搜尋結果；同樣的條件 60 秒內不重問 Civitai（來回切換篩選時很有感）"""
+        key = json.dumps(params, sort_keys=True)
+        hit = _search_cache.get(key)
+        if hit and time.time() - hit[0] < SEARCH_TTL:
+            return hit[1]
+        r = await _to_thread(requests.get, API + "/models", params=params, headers=_headers(), timeout=30)
+        if r.status_code != 200:
+            raise RuntimeError(f"Civitai 回應 {r.status_code}")
+        data = r.json()
+        _search_cache[key] = (time.time(), data)
+        while len(_search_cache) > 40:
+            _search_cache.pop(next(iter(_search_cache)))
+        return data
+
+    async def collect(params, cursor, pages, limit):
+        """從 Civitai 收一組結果；一頁沒湊滿就自動往下翻（最多 pages 頁）。回傳（模型清單, 下一頁游標）"""
+        items, seen = [], set()
+        for _ in range(pages):
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                data = await fetch_page(params)
+            except Exception:
+                if not items:
+                    raise
+                break
+            for m in data.get("items", []):
+                if m["id"] not in seen:
+                    seen.add(m["id"])
+                    items.append(m)
+            cursor = (data.get("metadata") or {}).get("nextCursor")
+            if not cursor or len(items) >= limit:
+                break
+        return items, cursor
+
     @routes.get("/yomu/api/civitai/search")
     async def search(request):
         q = request.query
-        params = {"limit": min(int(q.get("limit", "24")), 100)}
-        if q.get("query"):
-            params["query"] = q["query"]
+        limit = min(int(q.get("limit", "24")), 100)
+        # 有關鍵字或底模篩選時，Civitai 是撈完一頁才濾；一次撈 100 筆才湊得到東西
+        params = {"limit": 100 if (q.get("query") or q.get("baseModels")) else limit}
+        query = (q.get("query") or "").strip()
+        if query:
+            params["query"] = query
         if q.get("types"):
             params["types"] = q["types"].split(",")
         if q.get("baseModels"):
@@ -255,17 +300,30 @@ def register(routes):
         if q.get("period"):
             params["period"] = q["period"]
         params["nsfw"] = "true" if q.get("nsfw") == "1" else "false"
-        if q.get("cursor"):
-            params["cursor"] = q["cursor"]
-        try:
-            r = await _to_thread(requests.get, API + "/models", params=params, headers=_headers(), timeout=30)
-            if r.status_code != 200:
-                return web.json_response({"ok": False, "msg": f"Civitai 回應 {r.status_code}"}, status=502)
-            data = r.json()
-        except Exception as e:
-            return web.json_response({"ok": False, "msg": f"連線失敗：{e}"}, status=502)
-        items = [slim_model(m) for m in data.get("items", [])]
-        return web.json_response({"ok": True, "items": items, "nextCursor": (data.get("metadata") or {}).get("nextCursor")})
+        cursor = q.get("cursor")
+        # Civitai 的關鍵字會被當成詞幹比對（arknight 只找得到 arknights），名字寫單數的要加底線（arknight_）才出得來；
+        # 兩種寫法同時搜、合併。只在第一頁做，「載入更多」沿用原詞的游標。
+        variants = [query]
+        if query and not cursor:
+            variants.append(query[:-1] if query.endswith("_") else query + "_")
+        results = await asyncio.gather(
+            *[collect(dict(params, **({"query": v} if v else {})), cursor, SEARCH_PAGES if i == 0 else 1, limit) for i, v in enumerate(variants)],
+            return_exceptions=True)
+        if isinstance(results[0], Exception):
+            return web.json_response({"ok": False, "msg": f"連線失敗：{results[0]}"}, status=502)
+        merged, seen = [], set()
+        for res in results:
+            if isinstance(res, Exception):
+                continue
+            for m in res[0]:
+                if m["id"] not in seen:
+                    seen.add(m["id"])
+                    merged.append(slim_model(m))
+        key = {"Most Downloaded": lambda m: m["downloads"] or 0, "Highest Rated": lambda m: m["likes"] or 0,
+               "Newest": lambda m: (m["versions"][0]["publishedAt"] or "") if m["versions"] else ""}.get(q.get("sort"))
+        if key and len(variants) > 1:
+            merged.sort(key=key, reverse=True)
+        return web.json_response({"ok": True, "items": merged, "nextCursor": results[0][1]})
 
     @routes.get("/yomu/api/civitai/model")
     async def model_detail(request):
@@ -342,5 +400,4 @@ def register(routes):
 
 
 async def _to_thread(fn, *a, **kw):
-    import asyncio
     return await asyncio.to_thread(fn, *a, **kw)
