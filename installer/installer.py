@@ -2,7 +2,7 @@
 Yomu 安裝程式 —— 在 http://127.0.0.1:8190 開一個小網頁，幫沒有 ComfyUI 的人下載並裝好 ComfyUI + Yomu。
 
 只用 Python 標準庫。流程：git clone ComfyUI → 建 venv → 裝 PyTorch → 裝 ComfyUI 相依 →
-git clone Yomu 與勾選的自訂節點 → 桌面捷徑。模型不在這裡下載，進 Yomu 後從缺模型視窗 / Civitai 瀏覽器裝。
+git clone Yomu 與補幀節點 → 桌面捷徑。模型不在這裡下載，進 Yomu 後從缺模型視窗 / Civitai 瀏覽器裝。
 """
 import json
 import os
@@ -20,14 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", 8190
 YOMU_REPO = "https://github.com/piowyu-hina/ComfyUI-Yomu.git"
 COMFY_REPO = "https://github.com/comfyanonymous/ComfyUI.git"
-NODES = [
-    ("impact", "修手 / 臉部修復（Impact Pack）", True, [
-        "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
-        "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git"]),
-    ("tagger", "反推提示詞（WD14 Tagger）", False, ["https://github.com/pythongosssss/ComfyUI-WD14-Tagger.git"]),
-    ("mmaudio", "影片配音效（MMAudio）", False, ["https://github.com/kijai/ComfyUI-MMAudio.git"]),
-    ("rife", "影片補幀（Frame Interpolation）", False, ["https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git"]),
-]
+NODE_REPOS = ["https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git"]   # 影片補幀（圖生影片的 RIFE 用）
 NO_WINDOW = 0x08000000
 MIN_FREE_GB = 12
 
@@ -136,8 +129,7 @@ def make_shortcut(dest, vbs):
 
 def install_job(opts):
     dest = os.path.abspath(opts["dest"])
-    groups = [g for g in NODES if g[0] in opts["nodes"]]
-    repos = [(u, os.path.join(dest, "custom_nodes", u.rsplit("/", 1)[1][:-4])) for g in groups for u in g[3]]
+    repos = [(u, os.path.join(dest, "custom_nodes", u.rsplit("/", 1)[1][:-4])) for u in NODE_REPOS]
     with _lock:
         _job.update(running=True, ok=None, log=[], step=0, steps=6 + len(repos), dest=dest, name="", file="", now="", last=time.time())
     ok = False
@@ -217,10 +209,9 @@ button:disabled{opacity:.4;cursor:not-allowed}
 pre{background:#0a0c12;border:1px solid var(--line);border-radius:9px;padding:12px;font:12px/1.45 Consolas,monospace;height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:#c9d1d9}
 </style></head><body><div class="card">
 <h1>Yomu 安裝程式</h1>
-<div class="muted">會下載 ComfyUI、建立獨立的 Python 環境、裝好 Yomu。模型不在這裡下載（約需 12 GB 空間，不含模型）。</div>
+<div class="muted">會下載 ComfyUI、建立獨立的 Python 環境、裝好 Yomu（含圖生影片需要的補幀節點）。模型不在這裡下載（約需 12 GB 空間，不含模型）。</div>
 <label class="f">安裝位置<input type="text" id="dest"></label>
 <label class="f">顯卡 / PyTorch 版本<select id="cuda"></select><span class="muted" id="gpu"></span></label>
-<div><div style="margin-bottom:6px">要一起裝的功能</div><div id="nodes"></div></div>
 <label class="f">Yomu 的 GitHub 網址<input type="text" id="repo"></label>
 <div style="display:flex;gap:10px"><button id="go">開始安裝</button><button id="open" disabled>開啟 Yomu</button></div>
 <div class="track"><div class="fill" id="fill"></div></div>
@@ -238,7 +229,6 @@ let timer=null;
   for(const [v,t] of [['cu130','NVIDIA（驅動 580 以上）'],['cu128','NVIDIA（驅動 570 以上）'],['cu126','NVIDIA（較舊驅動）'],['cpu','只用 CPU']])
     $('cuda').add(new Option(t,v));
   $('cuda').value=i.cuda;
-  $('nodes').innerHTML=i.nodes.map(n=>`<label class="chk"><input type="checkbox" value="${n.key}" ${n.on?'checked':''}>${n.label}</label>`).join('');
   if(i.running){timer=setInterval(poll,1000);poll();}
 })();
 async function poll(){
@@ -253,7 +243,7 @@ ${s.now}`+(idle>20?`
   if(!s.running){clearInterval(timer);timer=null;$('open').disabled=!s.ok;if(s.ok)$('fill').style.width='100%';}
 }
 $('go').onclick=async()=>{
-  const r=await api('/api/install',{dest:$('dest').value,cuda:$('cuda').value,yomu_repo:$('repo').value,nodes:[...document.querySelectorAll('#nodes input:checked')].map(x=>x.value)});
+  const r=await api('/api/install',{dest:$('dest').value,cuda:$('cuda').value,yomu_repo:$('repo').value});
   if(!r.ok){alert(r.msg);return;}
   $('go').disabled=true;timer=setInterval(poll,1000);poll();
 };
@@ -282,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
             name, cuda = detect_gpu()
             return self._send(200, json.dumps({
                 "dest": os.path.join(os.path.expanduser("~"), "Yomu"), "repo": yomu_repo(), "gpu": name, "cuda": cuda,
-                "nodes": [{"key": k, "label": label, "on": on} for k, label, on, _ in NODES], "running": _job["running"]}))
+                "running": _job["running"]}))
         if path == "/api/status":
             with _lock:
                 return self._send(200, json.dumps({**_job, "ts": time.time()}))
