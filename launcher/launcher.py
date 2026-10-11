@@ -21,15 +21,23 @@ LAUNCHER_DIR = os.path.dirname(os.path.abspath(__file__))
 YOMU_DIR = os.path.dirname(LAUNCHER_DIR)
 COMFY_DIR = os.path.dirname(os.path.dirname(YOMU_DIR))
 PYTHON = os.path.join(COMFY_DIR, "venv", "Scripts", "python.exe")
-COMFY_ARGS = [
-    "-u", "main.py",
-    "--preview-method", "auto",
-    "--use-pytorch-cross-attention",
-    "--enable-manager",
-    "--fast", "fp16_accumulation", "fp8_matrix_mult",
-    "--listen", "127.0.0.1",
-    "--port", "8188",
-]
+SAGE_DIR = os.path.join(COMFY_DIR, "venv", "Lib", "site-packages", "sageattention")
+
+
+def comfy_args():
+    """有裝 SageAttention 就用它（影片取樣快 3 到 4 成），沒裝維持 PyTorch 內建注意力"""
+    attention = "--use-sage-attention" if os.path.isdir(SAGE_DIR) else "--use-pytorch-cross-attention"
+    return [
+        "-u", "main.py",
+        "--preview-method", "auto",
+        attention,
+        "--enable-manager",
+        "--fast", "fp16_accumulation", "fp8_matrix_mult",
+        "--listen", "127.0.0.1",
+        "--port", "8188",
+    ]
+
+
 COMFY_HOST, COMFY_PORT = "127.0.0.1", 8188
 LAUNCHER_HOST, LAUNCHER_PORT = "127.0.0.1", 8189
 CONSOLE_LOG = os.path.join(COMFY_DIR, "user", "comfyui_console.log")
@@ -135,7 +143,7 @@ def start():
         os.makedirs(os.path.dirname(CONSOLE_LOG), exist_ok=True)
         log = open(CONSOLE_LOG, "wb")
         _proc = subprocess.Popen(
-            [PYTHON] + COMFY_ARGS,
+            [PYTHON] + comfy_args(),
             cwd=COMFY_DIR,
             stdout=log,
             stderr=subprocess.STDOUT,
