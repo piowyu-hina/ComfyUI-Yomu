@@ -148,7 +148,7 @@ def install_job(opts):
         if run([py, "-m", "pip", "install", "torch", "torchvision", "torchaudio", "--index-url", index]) != 0:
             raise RuntimeError("PyTorch 安裝失敗")
 
-        step("安裝 ComfyUI 相依套件")
+        step("安裝 ComfyUI 相依套件（網路慢時可能要 10 到 30 分鐘，請耐心等）")
         if run([py, "-m", "pip", "install", "-r", os.path.join(dest, "requirements.txt")], dest) != 0:
             raise RuntimeError("相依套件安裝失敗")
 
