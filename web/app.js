@@ -1518,6 +1518,11 @@
         document.querySelectorAll('.lora-row').forEach(r => r._refresh());
       }
     };
+    $('btnOpenFolder').onclick = async () => {
+      const kind = state.assetKind === 'checkpoints' ? ckptKind() : state.assetKind;
+      const r = await fetch('/yomu/api/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }) }).catch(() => null);
+      if (!r?.ok) toast('開不了資料夾：請確認 ComfyUI 已重新啟動到最新版', true);
+    };
     $('btnCivitai').onclick = async () => {
       const r = await fetch('/yomu/api/civitai/fetch', { method: 'POST' }).then(r => r.json());
       if (!r.ok) { toast(r.msg, true); return; }

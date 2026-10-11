@@ -215,6 +215,24 @@ def _recycle(paths):
         raise RuntimeError(r.stderr.strip() or "刪除失敗")
 
 
+FOLDER_KINDS = ("checkpoints", "diffusion_models", "loras", "embeddings", "vae", "upscale_models", "controlnet", "text_encoders")
+
+
+@routes.post("/yomu/api/open-folder")
+async def open_folder(request):
+    """在檔案總管開啟模型資料夾（只開固定清單裡的，路徑由伺服器決定）"""
+    kind = (await request.json()).get("kind")
+    if kind == "output":
+        path = folder_paths.get_output_directory()
+    elif kind in FOLDER_KINDS:
+        path = folder_paths.get_folder_paths(kind)[0]
+    else:
+        return web.json_response({"ok": False}, status=400)
+    os.makedirs(path, exist_ok=True)
+    os.startfile(path)
+    return web.json_response({"ok": True, "path": path})
+
+
 @routes.post("/yomu/api/model-delete")
 async def model_delete(request):
     kind, name = request.query.get("kind"), request.query.get("name", "")
