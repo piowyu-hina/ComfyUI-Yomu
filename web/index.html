@@ -19,6 +19,7 @@
     <button class="tab" data-mode="img2video">圖生影片</button>
   </nav>
   <div class="topbar-right">
+    <button class="tbtn" id="btnFolders" title="在檔案總管開啟模型、LoRA、輸出圖片等資料夾（自己放檔案的地方）">📂 資料夾 ▾</button>
     <button class="tbtn" id="btnLayout" title="版面：預設 / 自訂">版面 ▾</button>
     <button class="tbtn" id="btnTheme">主題：深色</button>
     <button class="tbtn" id="btnCivitaiBrowse" title="搜尋、下載 Civitai 上的模型">☁ Civitai</button>
@@ -330,7 +331,6 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
       </div>
       <label class="check small" title="只列出跟目前工作流同一架構的模型（依 Civitai 的 Base Model 或檔名判斷）"><input type="checkbox" id="compatOnly" checked><span>只顯示相容</span></label>
       <input type="text" id="assetSearch" placeholder="搜尋…">
-      <button class="tbtn" id="btnOpenFolder" title="在檔案總管開啟這類模型的資料夾（自己放模型的地方），放完按 F5 重新整理">📂 開啟資料夾</button>
       <button class="tbtn" id="btnCivitai" title="用檔案 hash 到 Civitai 找預覽圖、觸發詞、底模（只補缺的）">☁ Civitai 抓圖</button>
       <span class="muted small" id="civitaiState"></span>
       <button class="tbtn" id="btnCloseAssets">✕</button>
@@ -389,6 +389,19 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
       </div>
     </div>
   </div>
+</div>
+
+<div id="folderMenu" class="image-menu" role="menu" hidden>
+  <button role="menuitem" data-folder="checkpoints">Checkpoint（圖片模型）</button>
+  <button role="menuitem" data-folder="diffusion_models">Wan / Anima 模型</button>
+  <button role="menuitem" data-folder="loras">LoRA</button>
+  <button role="menuitem" data-folder="embeddings">Embedding</button>
+  <button role="menuitem" data-folder="vae">VAE</button>
+  <button role="menuitem" data-folder="text_encoders">文字編碼器</button>
+  <button role="menuitem" data-folder="upscale_models">放大模型（Hires Fix）</button>
+  <button role="menuitem" data-folder="controlnet">ControlNet</button>
+  <button role="menuitem" data-folder="input">輸入圖片（來源圖）</button>
+  <button role="menuitem" data-folder="output">輸出圖片</button>
 </div>
 
 <div id="layoutMenu" class="image-menu" role="menu" hidden>

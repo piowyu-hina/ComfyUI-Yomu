@@ -1518,11 +1518,6 @@
         document.querySelectorAll('.lora-row').forEach(r => r._refresh());
       }
     };
-    $('btnOpenFolder').onclick = async () => {
-      const kind = state.assetKind === 'checkpoints' ? ckptKind() : state.assetKind;
-      const r = await fetch('/yomu/api/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind }) }).catch(() => null);
-      if (!r?.ok) toast('開不了資料夾：請確認 ComfyUI 已重新啟動到最新版', true);
-    };
     $('btnCivitai').onclick = async () => {
       const r = await fetch('/yomu/api/civitai/fetch', { method: 'POST' }).then(r => r.json());
       if (!r.ok) { toast(r.msg, true); return; }
@@ -1579,6 +1574,21 @@
       } catch (e) { toast('無法開啟資料夾：' + e.message, true); }
     };
     $('btnGenerate').onclick = generate;
+    const folderMenu = $('folderMenu');
+    $('btnFolders').onclick = (e) => {
+      e.stopPropagation();
+      const r = $('btnFolders').getBoundingClientRect();
+      folderMenu.hidden = false;
+      folderMenu.style.left = Math.min(r.left, innerWidth - folderMenu.offsetWidth - 6) + 'px';
+      folderMenu.style.top = (r.bottom + 4) + 'px';
+    };
+    document.addEventListener('pointerdown', (e) => { if (!folderMenu.contains(e.target) && e.target !== $('btnFolders')) folderMenu.hidden = true; });
+    folderMenu.onclick = async (e) => {
+      const b = e.target.closest('[data-folder]'); if (!b) return;
+      folderMenu.hidden = true;
+      const r = await fetch('/yomu/api/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: b.dataset.folder }) }).catch(() => null);
+      if (!r?.ok) toast('開不了資料夾：請確認 ComfyUI 已重新啟動到最新版', true);
+    };
     $('ckpt').onchange = updateCkptPreview;
     $('workflowSel').onchange = () => applyTemplate($('workflowSel').value);
     state.compatOnly = lsGet(LS_UI + '.compatOnly', true); $('compatOnly').checked = state.compatOnly;

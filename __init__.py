@@ -224,6 +224,8 @@ async def open_folder(request):
     kind = (await request.json()).get("kind")
     if kind == "output":
         path = folder_paths.get_output_directory()
+    elif kind == "input":
+        path = folder_paths.get_input_directory()
     elif kind in FOLDER_KINDS:
         path = folder_paths.get_folder_paths(kind)[0]
     else:
