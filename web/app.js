@@ -668,7 +668,7 @@
     let tags;
     try { tags = await readFileTags(file, video); } catch { toast('讀取參數失敗：請確認 ComfyUI 已重新啟動到最新版', true); return; }
     let raw = PngInfo.parseParams(tags);
-    if (video && raw?.source !== 'yomu') raw = null;   // 影片只認 Yomu 自己存的參數
+    if (video && raw?.origin !== 'yomu') raw = null;   // 影片只認 Yomu 自己存的參數
     if (!raw) {
       if (!video && ['img2img', 'inpaint', 'img2video'].includes(state.mode)) { uploadFile(file, { keepMode: true }); return; }
       showLocalImage(file, null);
@@ -677,11 +677,12 @@
     }
     const pos = PngInfo.extractLoras(raw.pos), neg = PngInfo.extractLoras(raw.neg);
     const p = { ...raw, pos: pos.text, neg: neg.text, loras: raw.loras?.length ? raw.loras : pos.loras };
-    if (raw.source !== 'yomu') p.mode = 'txt2img';
+    if (raw.origin !== 'yomu') p.mode = 'txt2img';
     showLocalImage(file, p);
     const missing = applyParams(await resolveModelHash(p));
-    const srcName = { yomu: 'Yomu', stability_matrix: 'Stability Matrix', comfyui: 'ComfyUI', a1111: 'A1111' }[raw.source] || raw.source;
-    toast(`已載入參數（來源：${srcName}），切到「${document.querySelector(`#modeTabs .tab[data-mode="${state.mode}"]`)?.textContent || state.mode}」`);
+    const restored = await restoreSources(p);
+    const srcName = { yomu: 'Yomu', stability_matrix: 'Stability Matrix', comfyui: 'ComfyUI', a1111: 'A1111' }[raw.origin] || raw.origin;
+    toast(`已載入參數（來源：${srcName}），切到「${document.querySelector(`#modeTabs .tab[data-mode="${state.mode}"]`)?.textContent || state.mode}」` + (restored ? '；' + restored : ''));
     showMissing(missing);
   }
   /** 圖用到的模型這台電腦沒有 → 列出來，每個都可以直接到 Civitai 搜 */
@@ -947,6 +948,21 @@
   }
 
   // ================================================================ source image (img2img)
+  /** 來源圖放進左邊的來源卡（info＝{name, subfolder, type}，blob＝圖檔本身），回傳寬高 */
+  async function setSourceImage(info, blob) {
+    const previewUrl = URL.createObjectURL(blob);
+    const dims = await new Promise(resolve => { const im = new Image(); im.onload = () => resolve({ width: im.naturalWidth, height: im.naturalHeight }); im.onerror = () => resolve({ width: 0, height: 0 }); im.src = previewUrl; });
+    state.source = { name: info.name, subfolder: info.subfolder || '', type: info.type || 'input', ...dims, previewUrl };
+    $('sourcePreview').src = previewUrl; $('sourcePreview').hidden = false;
+    $('dropEmpty').hidden = true;
+    $('sourceInfo').textContent = `${info.name} · ${dims.width}×${dims.height}`; $('sourceInfo').hidden = false;
+    return dims;
+  }
+  function clearSourceImage() {
+    state.source = null;
+    $('sourcePreview').removeAttribute('src'); $('sourcePreview').hidden = true;
+    $('dropEmpty').hidden = false; $('sourceInfo').hidden = true;
+  }
   async function uploadFile(file, { keepMode = false } = {}) {
     if (!file || !file.type.startsWith('image/')) { toast('請選擇圖片檔', true); return; }
     const fd = new FormData();
@@ -956,12 +972,8 @@
     const res = await fetch('/upload/image', { method: 'POST', body: fd });
     if (!res.ok) { toast('上傳失敗', true); setStatus('就緒'); return; }
     const info = await res.json();
-    const previewUrl = URL.createObjectURL(file);
-    const dims = await new Promise(resolve => { const im = new Image(); im.onload = () => resolve({ width: im.naturalWidth, height: im.naturalHeight }); im.onerror = () => resolve({ width: 0, height: 0 }); im.src = previewUrl; });
-    state.source = { name: info.name, subfolder: info.subfolder || '', type: info.type || 'input', ...dims, previewUrl };
-    $('sourcePreview').src = previewUrl; $('sourcePreview').hidden = false;
-    $('dropEmpty').hidden = true;
-    $('sourceInfo').textContent = `${info.name} · ${dims.width}×${dims.height}`; $('sourceInfo').hidden = false;
+    const dims = await setSourceImage(info, file);
+    const previewUrl = state.source.previewUrl;
     setStatus('就緒');
     if (state.mode === 'inpaint') { await HYInpaint.load(previewUrl, dims.width, dims.height); HYInpaint.show(true); }
     if (state.mode === 'img2video' && dims.width && dims.height) {   // 依來源比例，長邊 896、16 的倍數
@@ -977,11 +989,46 @@
     const fd = new FormData(); fd.append('image', file, file.name || `aux_${Date.now()}.png`); fd.append('subfolder', 'yomu');
     const res = await fetch('/upload/image', { method: 'POST', body: fd });
     if (!res.ok) { toast('上傳失敗', true); return; }
-    const info = await res.json(), previewUrl = URL.createObjectURL(file);
+    setAuxImage(target, await res.json(), file);
+  }
+  function setAuxImage(target, info, blob) {
+    const previewUrl = URL.createObjectURL(blob);
     state.aux[target] = { name: info.name, subfolder: info.subfolder || '', type: info.type || 'input', previewUrl };
     const dz = document.querySelector(`.mini-drop[data-target="${target}"]`);
     dz.querySelector('img').src = previewUrl; dz.querySelector('img').hidden = false; dz.querySelector('.dropzone-empty').hidden = true;
     const inf = dz.querySelector('.dropzone-info'); inf.textContent = info.name; inf.hidden = false;
+  }
+  function clearAuxImage(target) {
+    state.aux[target] = null;
+    const dz = document.querySelector(`.mini-drop[data-target="${target}"]`);
+    dz.querySelector('img').removeAttribute('src'); dz.querySelector('img').hidden = true; dz.querySelector('.dropzone-empty').hidden = false;
+    dz.querySelector('.dropzone-info').hidden = true;
+  }
+  /** 載入圖／影片的參數後，把當時的來源圖與結尾圖放回去；檔案還在 input 裡就帶入，不在就留白。回傳要提示的字 */
+  async function restoreSources(p) {
+    // 改名前存的圖，來源圖放在 input/hinayome/，現在是 input/yomu/
+    const fetchInput = async (name, subfolder) => {
+      for (const sub of subfolder === 'hinayome' ? ['yomu', 'hinayome'] : [subfolder]) {
+        const r = name ? await fetch(viewUrl({ filename: name, subfolder: sub, type: 'input' })).catch(() => null) : null;
+        if (r?.ok) return { blob: await r.blob(), subfolder: sub };
+      }
+      return null;
+    };
+    const notes = [];
+    const src = p.source, found = await fetchInput(src?.name, src?.subfolder || '');
+    if (found) {
+      await setSourceImage({ name: src.name, subfolder: found.subfolder, type: 'input' }, found.blob);
+      if (state.mode === 'inpaint') await HYInpaint.load(state.source.previewUrl, state.source.width, state.source.height);
+      notes.push('來源圖已帶入');
+    } else {
+      clearSourceImage();
+      if (src?.name) notes.push('來源圖的檔案已不在，留白');
+    }
+    const endName = (p.endImage || '').split('/').pop(), endSub = (p.endImage || '').includes('/') ? p.endImage.slice(0, p.endImage.lastIndexOf('/')) : '';
+    const end = await fetchInput(endName, endSub);
+    if (end) { setAuxImage('end', { name: endName, subfolder: end.subfolder, type: 'input' }, end.blob); notes.push('結尾圖已帶入'); }
+    else clearAuxImage('end');
+    return notes.join('、');
   }
   function setupMiniDrops() {
     document.querySelectorAll('.mini-drop').forEach(dz => {
@@ -1396,13 +1443,13 @@
     try {
       const chunks = await fetch(`/yomu/api/pnginfo?filename=${encodeURIComponent(it.filename)}&subfolder=${encodeURIComponent(it.subfolder)}`).then(r => r.json());
       let raw = PngInfo.parseParams(chunks);
-      if (isVideoFile(it.filename) && raw?.source !== 'yomu') raw = null;
+      if (isVideoFile(it.filename) && raw?.origin !== 'yomu') raw = null;
       if (!raw) { $('metaBar').textContent = `${it.filename} · 沒有可讀的參數`; return; }
       const pos = PngInfo.extractLoras(raw.pos), neg = PngInfo.extractLoras(raw.neg);
       const p = { ...raw, pos: pos.text, neg: neg.text, loras: raw.loras?.length ? raw.loras : pos.loras };
-      if (raw.source !== 'yomu') p.mode = 'txt2img';
+      if (raw.origin !== 'yomu') p.mode = 'txt2img';
       item.params = p; item.mode = p.mode;
-      if (state.current?.item === item) { renderMeta(p, item); if (loadParams) { const missing = applyParams(await resolveModelHash(p)); toast('已載入參數'); showMissing(missing); } }
+      if (state.current?.item === item) { renderMeta(p, item); if (loadParams) { const missing = applyParams(await resolveModelHash(p)); const restored = await restoreSources(p); toast('已載入參數' + (restored ? '；' + restored : '')); showMissing(missing); } }
     } catch { $('metaBar').textContent = it.filename; }
   }
   function setupGallery() {

@@ -149,7 +149,7 @@ window.PngInfo = (() => {
     // 1. Yomu 自己存的（舊名 hinayome、inference_ui 也認）
     const mineRaw = chunks.yomu || chunks.hinayome || chunks.inference_ui;
     const mine = mineRaw && tryJson(mineRaw);
-    if (mine && mine.pos != null) return { ...mine, source: 'yomu' };
+    if (mine && mine.pos != null) return { ...mine, origin: 'yomu' };
 
     // 2. Stability Matrix
     const pj = chunks['parameters-json'] && tryJson(chunks['parameters-json']);
@@ -162,7 +162,7 @@ window.PngInfo = (() => {
         width: st.Sampler?.Width || pj.Width, height: st.Sampler?.Height || pj.Height,
         sampler: st.Sampler?.SelectedSampler?.Name || s?.sampler, scheduler: st.Sampler?.SelectedScheduler?.Name || s?.scheduler,
         clipskip: st.Model?.IsClipSkipEnabled ? -Number(st.Model.ClipSkip) : undefined,
-        source: 'stability_matrix',
+        origin: 'stability_matrix',
       };
       const hf = (st.Modules?.$values || []).find(m => m.$type === 'HiresFixModule');
       if (hf) {
@@ -174,10 +174,10 @@ window.PngInfo = (() => {
 
     // 3. ComfyUI API prompt
     const cp = chunks.prompt && tryJson(chunks.prompt);
-    if (cp && typeof cp === 'object') { const o = parseComfyPrompt(cp); if (o.pos != null || o.ckpt) return { ...o, source: 'comfyui' }; }
+    if (cp && typeof cp === 'object') { const o = parseComfyPrompt(cp); if (o.pos != null || o.ckpt) return { ...o, origin: 'comfyui' }; }
 
     // 4. A1111 文字
-    if (chunks.parameters) return { ...parseA1111(chunks.parameters), source: 'a1111' };
+    if (chunks.parameters) return { ...parseA1111(chunks.parameters), origin: 'a1111' };
     return null;
   }
 
