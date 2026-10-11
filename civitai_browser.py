@@ -66,8 +66,6 @@ def target_folder(model_type, base_model):
         return "upscale_models"
     if t == "controlnet":
         return "controlnet"
-    if t == "wildcards":
-        return "wildcards"
     if t == "checkpoint":
         return "diffusion_models" if DIFFUSION_BASES.search(base_model or "") else "checkpoints"
     return None
@@ -200,23 +198,6 @@ def _download_job(job):
                     job["speed"] = (done - last) / (now - last_t)
                     last, last_t = done, now
         os.replace(tmp, dest)
-        if job["kind"] == "wildcards" and dest.lower().endswith(".zip"):
-            import zipfile
-            folder = os.path.join(job["folder"], re.sub(r"[^\w\-]+", "_", job["model"].get("name") or "wildcards").strip("_")[:60])
-            os.makedirs(folder, exist_ok=True)
-            with zipfile.ZipFile(dest) as z:
-                for m in z.infolist():
-                    if m.filename.lower().endswith((".txt", ".yaml", ".yml")) and not m.is_dir():
-                        target = os.path.join(folder, os.path.normpath(m.filename))
-                        if not os.path.abspath(target).startswith(os.path.abspath(folder)):
-                            continue
-                        os.makedirs(os.path.dirname(target), exist_ok=True)
-                        with z.open(m) as src, open(target, "wb") as out:
-                            out.write(src.read())
-            os.remove(dest)
-            job["filename"] = os.path.basename(folder) + "/"
-            job["status"] = "done"
-            return
         base = os.path.splitext(dest)[0]
         _write_info(base, job["model"], job["version"], job.get("sha256"))
         img = job["version"].get("image")
@@ -323,9 +304,7 @@ def register(routes):
         folder_kind = target_folder(model.get("type"), version.get("baseModel"))
         if not folder_kind:
             return web.json_response({"ok": False, "msg": f"不支援的類型：{model.get('type')}"}, status=400)
-        folders = [os.path.join(folder_paths.models_dir, "wildcards")] if folder_kind == "wildcards" else folder_paths.get_folder_paths(folder_kind)
-        if folder_kind == "wildcards":
-            os.makedirs(folders[0], exist_ok=True)
+        folders = folder_paths.get_folder_paths(folder_kind)
         if not folders:
             return web.json_response({"ok": False, "msg": f"找不到資料夾 {folder_kind}"}, status=500)
         if not api_key():

@@ -291,11 +291,7 @@ from .civitai import register as _register_civitai
 _register_civitai(routes)
 from .civitai_browser import register as _register_civitai_browser
 _register_civitai_browser(routes)
-from .wildcards import register as _register_wildcards
-_register_wildcards(routes)
-from .video_tools import register as _register_video_tools
-_register_video_tools(routes)
 
-from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+NODE_CLASS_MAPPINGS = {}
 
 WEB_DIRECTORY = "./js"

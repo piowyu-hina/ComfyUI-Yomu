@@ -118,10 +118,6 @@
     try { const r = await fetch('/yomu/api/model-families'); if (r.ok) state.families = await r.json(); } catch {}
 
     fillCkptSelect();
-    const animaList = state.unets.filter(n => (state.families.diffusion_models?.[n] || '') === 'anima' || /anima/i.test(n));
-    // 預設挑一個非 turbo 的 Anima（turbo 版是蒸餾的，當精修器參數不合）
-    const animaDefault = animaList.find(n => !/turbo/i.test(n) && /wai|base/i.test(n)) || animaList.find(n => !/turbo/i.test(n)) || animaList[0];
-    fillSelect($('adetHandModel'), animaList, $('adetHandModel').value || animaDefault);
     fillSelect($('sampler'), samplers, $('sampler').value || 'dpmpp_2m');
     fillSelect($('scheduler'), schedulers, $('scheduler').value || 'karras');
     fillSelect($('hiresModel'), state.upscalers, $('hiresModel').value || state.upscalers.find(u => /anime/i.test(u)) || state.upscalers[0]);
@@ -188,11 +184,9 @@
     $('clipskip').closest('.field').hidden = !slotId(t, 'clipskip');
     $('fieldFp8').hidden = !('weight_dtype' in (t[slotId(t, 'ckpt')]?.inputs || {}));   // 只有 UNETLoader 型範本有 fp8 可選
     $('hiresOn').closest('.card').hidden = !slotId(t, 'hires_sampler');
-    $('cardAdet').hidden = !slotId(t, 'adet_hand');
     $('fieldEndImage').hidden = !slotId(t, 'load_end_image');
     $('fieldShrink').hidden = !slotId(t, 'shrink');
     $('fieldHiresCn').hidden = !slotId(t, 'hires_cn');
-    syncAdet();
     const saved = restore ? lsGet(LS_PARAMS + '.' + name, null) : null;
     if (saved) { delete saved.pos; delete saved.neg; delete saved.mode; delete saved.template; applyParams(saved, { keepSeed: true }); }
     else {
@@ -318,8 +312,7 @@
   /** Hires Fix 關閉：拔掉所有 @hires_* 節點，@save 直接吃 @decode */
   /** 影像後處理鏈：每一段 = {prefix, 入口節點(吃 image 的), 出口節點}；關掉的拔掉、下一段接回上一段 */
   const STAGES = [
-    { key: 'hand',  prefix: '@adet_hand', inNode: 'adet_hand', inKey: 'image', outNode: 'adet_hand' },   // 先修手（在原尺寸修，便宜又準）
-    { key: 'hires', prefix: '@hires', inNode: 'hires_upscale', inKey: 'image', outNode: 'hires_decode' },   // 再放大重畫（Tile 鎖住修好的手）
+    { key: 'hires', prefix: '@hires', inNode: 'hires_upscale', inKey: 'image', outNode: 'hires_decode' },   // 放大重畫
   ];
   function applyStages(prompt, enabled) {
     const saveId = slotId(prompt, 'save'), decodeId = slotId(prompt, 'decode');
@@ -390,9 +383,7 @@
       fp8: $('fp8').checked,
       maskGrow: parseInt($('maskGrow').value, 10) || 0,
       frames: parseInt($('frames').value, 10) || 81,
-      adet: { hand: $('adetHand').checked, handModel: $('adetHandModel').value, handDenoise: parseFloat($('adetHandDenoise').value) },
       endImage: state.aux.end ? auxPath(state.aux.end) : '',
-      audio: { enabled: $('audioOn').checked, prompt: $('audioPrompt').value.trim() },
       hires: { enabled: $('hiresOn').checked, model: $('hiresModel').value, scale: parseFloat($('hiresScale').value), steps: parseInt($('hiresSteps').value, 10), denoise: parseFloat($('hiresDenoise').value), cn: $('hiresCn').checked },
       shrink: $('shrinkOn').checked,
       source: state.source ? { name: state.source.name, subfolder: state.source.subfolder, type: state.source.type, width: state.source.width, height: state.source.height } : null,
@@ -450,37 +441,13 @@
       setSlot(prompt, 'resize', { width: p.resizeToTarget ? p.width : p.source.width, height: p.resizeToTarget ? p.height : p.source.height });
     }
     if (p.hires.enabled && !p.hires.model) throw new Error('Hires Fix 需要選一個放大模型');
-    if (p.adet.hand && !p.adet.handModel) throw new Error('修手需要一個 Anima 模型（models/diffusion_models）');
-    if (slotId(prompt, 'audio')) {
-      if (p.audio.enabled) {
-        const t = state.templates[state.template], vfi = t[slotId(t, 'vfi')]?.inputs?.multiplier || 1, outFps = t[slotId(t, 'video')]?.inputs?.fps || 24;
-        const duration = (p.frames * vfi) / outFps;   // 影片實際秒數
-        setSlot(prompt, 'audio', { duration: Math.round(duration * 100) / 100, seed: p.seed, prompt: p.audio.prompt });
-        setSlot(prompt, 'audio_frames', { src_fps: outFps });
-      } else {
-        delete prompt[slotId(prompt, 'video')].inputs.audio;
-        for (const key of ['audio', 'audio_frames', 'audio_model', 'audio_utils']) { const id = slotId(prompt, key); if (id) delete prompt[id]; }
-      }
-    }
     if (slotId(prompt, 'load_end_image')) {
       if (!p.endImage) throw new Error('首尾幀範本需要一張結尾圖');
       setSlot(prompt, 'load_end_image', { image: p.endImage });
     }
-    applyStages(prompt, { hires: p.hires.enabled, hand: p.adet.hand });
+    applyStages(prompt, { hires: p.hires.enabled });
     applyHires(prompt, p);
     applyShrink(prompt, p);
-    // 共用的 Anima 組（@anima_*）：修手要用才留著
-    if (slotId(prompt, 'anima_model')) {
-      if (!p.adet.hand) {
-        for (const id of Object.keys(prompt)) if (String(prompt[id]._meta?.title || '').startsWith('@anima_')) delete prompt[id];
-      } else {
-        const animaPrep = (t) => cleanPrompt(String(t || '').replace(/embedding:[^\s,()<>]+/gi, ''));   // Anima 不吃 SDXL embedding
-        setSlot(prompt, 'anima_model', { unet_name: p.adet.handModel });
-        setSlot(prompt, 'anima_pos', { text: animaPrep(p.pos) });
-        setSlot(prompt, 'anima_neg', { text: animaPrep(p.neg) });
-      }
-    }
-    if (p.adet.hand) setSlot(prompt, 'adet_hand', { seed: p.seed, denoise: p.adet.handDenoise });
     applyLoras(prompt, p.loras);
     applyLoras(prompt, p.loras.map(l => ({ ...l, name: lowModel(l.name, state.loras) || l.name })), 'lora_low');
     const saveNodeId = slotId(prompt, 'save');
@@ -508,33 +475,24 @@
         const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json());
         params.inpaintMask = up.subfolder ? `${up.subfolder}/${up.name}` : up.name;
       }
-      // 字卡：有 __名字__ 或 {A|B} 時，先抽好再送
-      const useWc = !!window.HYWildcards && (HYWildcards.hasWildcards(params.pos) || HYWildcards.hasWildcards(params.neg));
       setStatus('送出中…'); setProgress(1);
-      {
-        const p = { ...params };
-        if (useWc) {
-          p.posTemplate = params.pos; p.negTemplate = params.neg;
-          let posT = params.pos, picks = [];
-          if (window.HYWildcards) { const a = await HYWildcards.expand(posT, p.seed), b = await HYWildcards.expand(params.neg, p.seed + 1); posT = a.text; p.neg = b.text; picks.push(...a.picks, ...b.picks); }
-          p.pos = posT; p.picks = picks;
-        }
-        const { prompt, saveNodeId, titles } = buildPrompt(p);
-        const res = await fetch('/prompt', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          // SaveImage 會把 extra_pnginfo 的每個 key 寫進 PNG，之後拖回來就能還原參數
-          body: JSON.stringify({ prompt, client_id: clientId, extra_data: { extra_pnginfo: { yomu: p } } }),
-        });
-        const out = await res.json();
-        if (!res.ok || out.error) {
-          const detail = out.node_errors && Object.keys(out.node_errors).length
-            ? Object.values(out.node_errors).flatMap(n => n.errors.map(e => e.message + (e.details ? `：${e.details}` : ''))).join('；')
-            : (out.error?.message || res.statusText);
-          throw new Error(detail);
-        }
-        state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: p.mode });
-        state.lastSeed = p.seed;
+      const p = { ...params };
+      const { prompt, saveNodeId, titles } = buildPrompt(p);
+      const res = await fetch('/prompt', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // SaveImage 會把 extra_pnginfo 的每個 key 寫進 PNG，之後拖回來就能還原參數
+        body: JSON.stringify({ prompt, client_id: clientId, extra_data: { extra_pnginfo: { yomu: p } } }),
+      });
+      const out = await res.json();
+      if (!res.ok || out.error) {
+        const detail = out.node_errors && Object.keys(out.node_errors).length
+          ? Object.values(out.node_errors).flatMap(n => n.errors.map(e => e.message + (e.details ? `：${e.details}` : ''))).join('；')
+          : (out.error?.message || res.statusText);
+        throw new Error(detail);
       }
+      state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: p.mode });
+      state.lastSeed = p.seed;
+      
       updateGenerateBtn();
       saveParams();
     } catch (e) { setStatus('就緒'); setProgress(0); toast(e.message, true); }
@@ -607,7 +565,7 @@
     const loras = p.loras?.length ? p.loras.map(l => `${PngInfo.baseName(l.name)}:${l.weight}`).join(', ') : '無';
     const hires = p.hires?.enabled ? ` · Hires ×${p.hires.scale}` : '';
     $('metaBar').textContent = `${v(p.width)}×${v(p.height)}${hires}${took} · ${v(p.steps)}步 · CFG ${v(p.cfg)} · ${v(p.sampler)}/${v(p.scheduler)} · seed ${v(p.seed)} · ${PngInfo.baseName(p.ckpt) || '?'} · LoRA: ${loras}`;
-    $('metaBar').title = $('metaBar').textContent + (p.picks?.length ? '\n抽到：' + p.picks.join('；') : '');
+    $('metaBar').title = $('metaBar').textContent;
   }
   let menuImage = null;
 
@@ -656,15 +614,7 @@
       for (const l of p.loras) { const m = matchFile(state.loras, l.name); if (m) addLoraRow(m, l.weight); else missing.push({ label: 'LoRA', type: 'LORA', name: l.name }); }
       updateLoraEmpty();
     }
-    if (p.adet) {
-      const a = p.adet;
-      if (a.hand != null) $('adetHand').checked = !!a.hand;
-      if (a.handModel && [...$('adetHandModel').options].some(o => o.value === a.handModel)) $('adetHandModel').value = a.handModel;
-      if (a.handDenoise != null) { $('adetHandDenoise').value = a.handDenoise; $('adetHandDenoiseVal').textContent = Number(a.handDenoise).toFixed(2); }
-      syncAdet();
-    }
     if (p.shrink != null) $('shrinkOn').checked = !!p.shrink;
-    if (p.audio) { if (p.audio.enabled != null) $('audioOn').checked = !!p.audio.enabled; if (p.audio.prompt != null) $('audioPrompt').value = p.audio.prompt; }
     if (p.hires) {
       const h = p.hires;
       if (h.enabled != null) $('hiresOn').checked = !!h.enabled;
@@ -950,9 +900,6 @@
     sel.value = [...sel.options].some(o => o.value === key) ? key : 'custom';
     syncHires();
   }
-  function syncAdet() {
-    $('adetHandOpts').style.opacity = $('adetHand').checked ? 1 : .4;
-  }
   function syncHires() {
     const on = $('hiresOn').checked;
     $('hiresOn').closest('.card').classList.toggle('off', !on);
@@ -965,7 +912,6 @@
     const usesSource = mode === 'img2img' || mode === 'inpaint' || mode === 'img2video';
     const isVideo = mode === 'txt2video' || mode === 'img2video';
     $('fieldFrames').hidden = !isVideo;
-    $('fieldAudio').hidden = !isVideo;
     $('cardVideo').hidden = !isVideo;
     setVideoPresets(isVideo);
     $('cardSource').hidden = !usesSource;
@@ -1039,231 +985,6 @@
         uploadAux(target, e.dataTransfer.files[0]);
       };
     });
-  }
-  // ---------------------------------------------------------------- 反推 tag（上排「反推」分頁）
-  async function tagImage(ref) {
-    const r = await fetch(`/pysssss/wd14tagger/tag?filename=${encodeURIComponent(ref.name)}&subfolder=${encodeURIComponent(ref.subfolder || '')}&type=${ref.type || 'input'}`);
-    if (!r.ok) throw new Error('WD14 Tagger 沒回應（' + r.status + '）');
-    return String(await r.json()).trim();
-  }
-  function setupTagger() {
-    const page = $('taggerPage'), dz = $('tgDrop'), input = dz.querySelector('input[type=file]'), img = dz.querySelector('img'), res = $('tgResult');
-    const open = () => { page.hidden = false; $('layout').classList.add('tagger'); HYInpaint.show(false); document.querySelectorAll('#modeTabs .tab').forEach(b => b.classList.toggle('active', b.dataset.mode === 'tagger')); };
-    const close = () => { page.hidden = true; $('layout').classList.remove('tagger'); switchMode(state.mode); };
-    const show = (file) => { img.src = URL.createObjectURL(file); img.hidden = false; dz.querySelector('.dropzone-empty').hidden = true; };
-    const runFile = async (file) => {
-      if (!file || !file.type.startsWith('image/')) { toast('請選擇圖片檔', true); return; }
-      show(file); res.value = '反推中…';
-      const fd = new FormData(); fd.append('image', file, file.name || `tag_${Date.now()}.png`); fd.append('subfolder', 'yomu'); fd.append('overwrite', 'true');
-      try {
-        const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json());
-        res.value = await tagImage({ name: up.name, subfolder: up.subfolder || '', type: 'input' }) || '（沒抓到 tag）';
-      } catch (e) { res.value = ''; toast(e.message, true); }
-    };
-    const runOutput = async (it) => {
-      show(await fetch(viewUrl({ filename: it.filename, subfolder: it.subfolder, type: 'output' })).then(r => r.blob()));
-      res.value = '反推中…';
-      try { res.value = await tagImage({ name: it.filename, subfolder: it.subfolder, type: 'output' }) || '（沒抓到 tag）'; } catch (e) { res.value = ''; toast(e.message, true); }
-    };
-    dz.onclick = () => input.click();
-    input.onchange = (e) => { runFile(e.target.files[0]); e.target.value = ''; };
-    dz.ondragover = (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); };
-    dz.ondragleave = () => dz.classList.remove('over');
-    dz.ondrop = async (e) => {
-      e.preventDefault(); e.stopPropagation(); dz.classList.remove('over');
-      const key = e.dataTransfer.getData('application/x-yomu-output');
-      if (key) { const it = GV.items.find(x => x && `${x.subfolder}/${x.filename}` === key); if (it && !isVideoFile(it.filename)) runOutput(it); return; }
-      runFile(e.dataTransfer.files[0]);
-    };
-    window.addEventListener('paste', (e) => { if (page.hidden) return; const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); runFile(f); } });
-    const fill = (replace) => {
-      const tags = res.value.trim(); if (!tags || tags === '反推中…') { toast('還沒有 tag', true); return; }
-      const ta = $('pos');
-      if (replace) setText(ta, tags);
-      else {
-        const lines = ta.value.replace(/\r/g, '').split('\n');
-        if (lines.length && lines[lines.length - 1].trim() !== '') lines.push('');
-        lines.push('#===== 反推 =====#', tags); setText(ta, lines.join('\n'));
-      }
-      ta.dispatchEvent(new Event('input', { bubbles: true })); close(); toast(replace ? '已取代正面提示詞' : '已加到正面提示詞最下面的「反推」區');
-    };
-    $('tgFill').onclick = () => fill(false); $('tgReplace').onclick = () => fill(true);
-    $('tgCopy').onclick = async () => { try { await navigator.clipboard.writeText(res.value); toast('已複製'); } catch { toast('複製失敗', true); } };
-    setupTagger.open = open; setupTagger.close = close;
-  }
-  // ---------------------------------------------------------------- 串接分頁（ComfyUI：LoadVideo ×N → ImageBatch 串 → 可選 MMAudio → SaveVideo）
-  function setupJoinPage() {
-    const page = $('joinPage'), list = $('jnList'), dz = $('jnDrop'), input = dz.querySelector('input[type=file]');
-    const items = [];   // {filename, subfolder, type, url, thumb}
-    let pendingId = null;
-    const setTabs = (m) => document.querySelectorAll('#modeTabs .tab').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
-    const open = () => { page.hidden = false; $('layout').classList.add('tagger'); HYInpaint.show(false); setTabs('join'); render(); };
-    const render = () => {
-      list.innerHTML = '';
-      items.forEach((it, i) => {
-        const el = document.createElement('div'); el.className = 'jn-item'; el.draggable = true;
-        el.innerHTML = `<span class="jn-idx">${i + 1}</span><img alt="" src="${it.thumb}"><span class="jn-name">${it.filename}</span><button class="mini" data-rm title="移除">✕</button>`;
-        el.querySelector('[data-rm]').onclick = () => { items.splice(i, 1); render(); };
-        el.ondragstart = (e) => { e.dataTransfer.setData('text/x-yomu-join', String(i)); el.classList.add('dragging'); };
-        el.ondragend = () => { list.querySelectorAll('.dragging, .drop-before, .drop-after').forEach(x => x.classList.remove('dragging', 'drop-before', 'drop-after')); };
-        el.ondragover = (e) => { if (!e.dataTransfer.types.includes('text/x-yomu-join')) return; e.preventDefault(); e.stopPropagation(); const r = el.getBoundingClientRect(); const after = e.clientY > r.top + r.height / 2; el.classList.toggle('drop-before', !after); el.classList.toggle('drop-after', after); };
-        el.ondragleave = () => el.classList.remove('drop-before', 'drop-after');
-        el.ondrop = (e) => {
-          if (!e.dataTransfer.types.includes('text/x-yomu-join')) return;
-          e.preventDefault(); e.stopPropagation();
-          const from = +e.dataTransfer.getData('text/x-yomu-join'); const r = el.getBoundingClientRect(); const after = e.clientY > r.top + r.height / 2;
-          const moved = items.splice(from, 1)[0]; let to = items.indexOf(it) + (after ? 1 : 0); items.splice(to, 0, moved); render();
-        };
-        list.appendChild(el);
-      });
-      $('jnGo').disabled = items.length < 2 || !!pendingId;
-      $('jnStatus').textContent = items.length ? `${items.length} 段，依上面的順序接` : '清單是空的';
-    };
-    const add = (ref, jump = false) => {
-      if (items.some(x => x.filename === ref.filename && x.subfolder === ref.subfolder && x.type === ref.type)) { toast('已經在清單裡了'); if (jump) open(); return; }
-      items.push({ ...ref, thumb: ref.type === 'output' ? thumbUrl({ filename: ref.filename, subfolder: ref.subfolder, mtime: Date.now(), size: 0 }, 128) : '' });
-      if (jump) open(); else render();
-      toast(`已加進串接清單（第 ${items.length} 段）`);
-    };
-    const addFile = async (file) => {
-      if (!file || !/\.(mp4|webm|mkv)$/i.test(file.name)) { toast('請選擇 mp4 / webm / mkv', true); return; }
-      const fd = new FormData(); fd.append('image', file, file.name); fd.append('overwrite', 'true');   // LoadVideo 只認 input 根目錄
-      const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json());
-      add({ filename: up.name, subfolder: '', type: 'input' });
-    };
-    dz.onclick = () => input.click();
-    input.onchange = async (e) => { for (const f of e.target.files) await addFile(f); e.target.value = ''; };
-    dz.ondragover = (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); };
-    dz.ondragleave = () => dz.classList.remove('over');
-    dz.ondrop = async (e) => {
-      e.preventDefault(); e.stopPropagation(); dz.classList.remove('over');
-      const key = e.dataTransfer.getData('application/x-yomu-output');
-      if (key) { const it = GV.items.find(x => x && `${x.subfolder}/${x.filename}` === key); if (it && isVideoFile(it.filename)) add({ filename: it.filename, subfolder: it.subfolder || '', type: 'output' }); else toast('要拖影片喔', true); return; }
-      for (const f of e.dataTransfer.files) await addFile(f);
-    };
-    $('jnClear').onclick = () => { items.length = 0; render(); };
-    /** 動態組圖：每段 LoadVideo → GetVideoComponents，ImageBatch 一路串，fps 用第一段的 */
-    const build = async () => {
-      // output 裡的檔案要先複製到 input 根目錄（LoadVideo 只認那裡）
-      const files = [];
-      for (const it of items) {
-        if (it.type === 'input' && !it.subfolder) { files.push(it.filename); continue; }
-        const blob = await fetch(viewUrl({ filename: it.filename, subfolder: it.subfolder, type: it.type })).then(r => r.blob());
-        const fd = new FormData(); fd.append('image', blob, it.filename); fd.append('overwrite', 'true');
-        const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json()); files.push(up.name);
-      }
-      const prompt = {}; let n = 1; const id = () => String(n++);
-      let prev = null, fpsRef = null;
-      for (const f of files) {
-        const lv = id(); prompt[lv] = { class_type: 'LoadVideo', _meta: { title: '@load_video' }, inputs: { file: f } };
-        const gc = id(); prompt[gc] = { class_type: 'GetVideoComponents', _meta: { title: '拆影片' }, inputs: { video: [lv, 0] } };
-        if (!fpsRef) fpsRef = [gc, 2];
-        if (!prev) prev = [gc, 0];
-        else { const b = id(); prompt[b] = { class_type: 'ImageBatch', _meta: { title: '接' }, inputs: { image1: prev, image2: [gc, 0] } }; prev = [b, 0]; }
-      }
-      const cv = id(); prompt[cv] = { class_type: 'CreateVideo', _meta: { title: '@video' }, inputs: { images: prev, fps: fpsRef } };
-      if ($('jnAudio').checked) {
-        // 取第一段的 fps 當 src_fps 需要數值；GetVideoComponents 的 fps 是連線不是數字 → 用「拆影片」出來的 fps 直接接 CreateVideo，MMAudio 那邊用重取樣節點吃連線
-        const rs = id(); prompt[rs] = { class_type: 'YomuResampleFrames', _meta: { title: '@audio_frames' }, inputs: { images: prev, src_fps: fpsRef, dst_fps: 25.0 } };
-        const am = id(); prompt[am] = { class_type: 'MMAudioModelLoader', _meta: { title: '@audio_model' }, inputs: { mmaudio_model: 'mmaudio_large_44k_v2_fp16.safetensors', base_precision: 'fp16' } };
-        const au = id(); prompt[au] = { class_type: 'MMAudioFeatureUtilsLoader', _meta: { title: '@audio_utils' }, inputs: { vae_model: 'mmaudio_vae_44k_fp16.safetensors', synchformer_model: 'mmaudio_synchformer_fp16.safetensors', clip_model: 'apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors', mode: '44k', precision: 'fp16' } };
-        const dur = id(); prompt[dur] = { class_type: 'YomuFramesDuration', _meta: { title: '秒數' }, inputs: { images: prev, fps: fpsRef } };
-        const sa = id(); prompt[sa] = { class_type: 'MMAudioSampler', _meta: { title: '@audio' }, inputs: { mmaudio_model: [am, 0], feature_utils: [au, 0], images: [rs, 0], duration: [dur, 0], steps: 25, cfg: 4.5, seed: randomSeed(), prompt: $('jnAudioPrompt').value.trim(), negative_prompt: '', mask_away_clip: false, force_offload: true } };
-        prompt[cv].inputs.audio = [sa, 0];
-      }
-      const sv = id(); prompt[sv] = { class_type: 'SaveVideo', _meta: { title: '@save' }, inputs: { video: [cv, 0], filename_prefix: 'Yomu/video/%year%%month%%day%_%hour%%minute%%second%_join', format: 'mp4', codec: 'h264' } };
-      return { prompt, saveNodeId: sv };
-    };
-    $('jnGo').onclick = async () => {
-      if (items.length < 2 || pendingId) return;
-      $('jnGo').disabled = true; $('jnResult').hidden = true; $('jnStatus').textContent = '準備檔案…';
-      try {
-        const { prompt, saveNodeId } = await build();
-        const titles = {}; for (const k in prompt) titles[k] = String(prompt[k]._meta?.title || '').replace(/^@/, '');
-        const res = await fetch('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, client_id: clientId }) });
-        const out = await res.json();
-        if (!res.ok || out.error) throw new Error(out.node_errors && Object.keys(out.node_errors).length ? Object.values(out.node_errors).flatMap(n => n.errors.map(e => e.message)).join('；') : (out.error?.message || res.statusText));
-        pendingId = out.prompt_id;
-        const p = { mode: 'img2video', template: '_join', pos: `（串接 ${items.length} 段）`, neg: '', seed: 0, joined: items.map(i => i.filename) };
-        state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: 'img2video', onDone: (item) => { pendingId = null; render(); if (item?.images?.[0]) { $('jnOutVideo').src = item.images[0].url; $('jnResult').hidden = false; } }, onFail: () => { pendingId = null; render(); } });
-        updateGenerateBtn();
-        const tick = () => { if (!pendingId) return; $('jnStatus').textContent = $('statusText').textContent; setTimeout(tick, 500); }; tick();
-      } catch (e) { toast(e.message, true); $('jnStatus').textContent = '失敗：' + e.message; $('jnGo').disabled = false; }
-    };
-    setupJoinPage.open = open; setupJoinPage.add = add;
-  }
-  // ---------------------------------------------------------------- 放大分頁（Video2X）
-  function setupUpscalePage() {
-    const page = $('upPage'), dz = $('upDrop'), input = dz.querySelector('input[type=file]'), vid = $('upSrcVideo'), info = dz.querySelector('.dropzone-info');
-    let src = null, jobId = null, timer = null;
-    const setTabs = (m) => document.querySelectorAll('#modeTabs .tab').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
-    const open = () => { page.hidden = false; $('layout').classList.add('tagger'); HYInpaint.show(false); setTabs('upscale'); };
-    const setSrc = (ref, url, label) => {
-      src = ref; vid.src = url; vid.hidden = false; dz.querySelector('.dropzone-empty').hidden = true;
-      info.textContent = label; info.hidden = false; $('upGo').disabled = false; $('upStatus').textContent = '可以開始了'; $('upResult').hidden = true;
-    };
-    const fromOutput = (it) => setSrc({ filename: it.filename, subfolder: it.subfolder || '', type: 'output' }, viewUrl({ filename: it.filename, subfolder: it.subfolder, type: 'output' }), it.filename);
-    const fromFile = async (file) => {
-      if (!file || !/\.(mp4|webm|mkv)$/i.test(file.name)) { toast('請選擇 mp4 / webm / mkv', true); return; }
-      const fd = new FormData(); fd.append('image', file, file.name); fd.append('subfolder', 'yomu'); fd.append('overwrite', 'true');
-      const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json());
-      setSrc({ filename: up.name, subfolder: up.subfolder || '', type: 'input' }, URL.createObjectURL(file), file.name);
-    };
-    const openWith = (ref) => { open(); fromOutput(ref); };
-    dz.onclick = () => input.click();
-    input.onchange = (e) => { fromFile(e.target.files[0]); e.target.value = ''; };
-    dz.ondragover = (e) => { e.preventDefault(); e.stopPropagation(); dz.classList.add('over'); };
-    dz.ondragleave = () => dz.classList.remove('over');
-    dz.ondrop = (e) => {
-      e.preventDefault(); e.stopPropagation(); dz.classList.remove('over');
-      const key = e.dataTransfer.getData('application/x-yomu-output');
-      if (key) { const it = GV.items.find(x => x && `${x.subfolder}/${x.filename}` === key); if (it && isVideoFile(it.filename)) fromOutput(it); else toast('要拖影片喔', true); return; }
-      fromFile(e.dataTransfer.files[0]);
-    };
-    $('upEngine').onchange = () => { $('upNoiseField').hidden = $('upEngine').value !== 'realcugan'; };
-    const poll = async () => {
-      const s = await fetch('/yomu/api/video/upscale/status?id=' + jobId).then(r => r.json());
-      $('upProg').style.width = Math.round((s.progress || 0) * 100) + '%';
-      $('upStatus').textContent = s.running ? `放大中… ${Math.round((s.progress || 0) * 100)}%（${Math.round(s.elapsed)} 秒）` : (s.ok ? `完成 · ${Math.round(s.elapsed)} 秒` : '失敗：' + (s.log.slice(-3).join(' | ') || '未知'));
-      if (s.running) { timer = setTimeout(poll, 1000); return; }
-      $('upGo').disabled = false; $('upCancel').hidden = true; $('upProgWrap').hidden = true; jobId = null;
-      if (s.ok && s.out) { $('upOutVideo').src = viewUrl(s.out); $('upResult').hidden = false; toast('放大完成：' + s.out.filename); gvLoad(true); }
-      else toast('放大失敗，看狀態列的訊息', true);
-    };
-    $('upGo').onclick = async () => {
-      if (!src) return;
-      $('upGo').disabled = true; $('upCancel').hidden = false; $('upProgWrap').hidden = false; $('upProg').style.width = '0%'; $('upResult').hidden = true; $('upStatus').textContent = '啟動中…';
-      const r = await fetch('/yomu/api/video/upscale', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...src, engine: $('upEngine').value, scale: +$('upScale').value, noise: +$('upNoise').value }) }).then(r => r.json());
-      if (!r.ok) { $('upStatus').textContent = r.msg || '啟動失敗'; $('upGo').disabled = false; $('upCancel').hidden = true; $('upProgWrap').hidden = true; toast(r.msg || '啟動失敗', true); return; }
-      jobId = r.id; poll();
-    };
-    $('upCancel').onclick = async () => { if (jobId) await fetch('/yomu/api/video/upscale/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: jobId }) }); };
-    setupUpscalePage.open = open; setupUpscalePage.openWith = openWith;
-  }
-  /** （舊）ComfyUI 版放大，已改用分頁；保留給 _video_upscale 範本 */
-  async function upscaleVideo(im) {
-    if (state.submitting) return;
-    state.submitting = true; updateGenerateBtn();
-    try {
-      setStatus('準備影片…');
-      const tpl = state.templates._video_upscale || (state.templates._video_upscale = await fetch('/yomu/api/workflow/_video_upscale').then(r => r.json()));
-      // LoadVideo 只認 input 根目錄的檔案 → 先複製一份過去
-      const blob = await fetch(im.url).then(r => r.blob());
-      const fd = new FormData(); fd.append('image', blob, im.filename); fd.append('overwrite', 'true');
-      const up = await fetch('/upload/image', { method: 'POST', body: fd }).then(r => r.json());
-      const prompt = JSON.parse(JSON.stringify(tpl));
-      setSlot(prompt, 'load_video', { file: up.name });
-      const saveNodeId = slotId(prompt, 'save'), titles = {};
-      for (const id in prompt) titles[id] = String(prompt[id]._meta?.title || '').replace(/^@/, '');
-      const p = { mode: 'img2video', template: '_video_upscale', pos: `（放大 ×2）${im.filename}`, neg: '', seed: 0, upscaleOf: im.filename };
-      setStatus('送出中…'); setProgress(1);
-      const res = await fetch('/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, client_id: clientId }) });
-      const out = await res.json();
-      if (!res.ok || out.error) throw new Error(out.error?.message || res.statusText);
-      state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: 'img2video' });
-      updateGenerateBtn();
-    } catch (e) { setStatus('就緒'); setProgress(0); toast(e.message, true); }
-    finally { state.submitting = false; updateGenerateBtn(); }
   }
   /** 圖庫的圖 → 當來源（拖到來源卡） */
   const isVideoFile = (name) => /\.(mp4|webm|mkv)$/i.test(name || '');
@@ -1627,7 +1348,7 @@
         el.oncontextmenu = (e) => {
           e.preventDefault();
           menuImage = { url: viewUrl({ ...it, type: 'output' }), filename: it.filename, subfolder: it.subfolder || '' };
-          $('btnUpscaleVideo').hidden = !isVideoFile(it.filename); $('btnJoinVideo').hidden = !isVideoFile(it.filename); $('btnAnimate').hidden = false;
+          $('btnAnimate').hidden = false;
           $('btnOpen').href = menuImage.url;
           const menu = $('imageMenu');
           menu.hidden = false;
@@ -1816,21 +1537,14 @@
       await uploadFile(new File([blob], im.filename || 'source.png', { type: blob.type || 'image/png' }), { keepMode: true });
       toast('圖已放進圖生影片，寫一句想要的動作再按生成');
     };
-    $('btnUpscaleVideo').onclick = () => { $('imageMenu').hidden = true; if (menuImage) setupUpscalePage.openWith({ filename: menuImage.filename, subfolder: menuImage.subfolder || '', type: 'output' }); };
-    setupUpscalePage();
-    setupJoinPage();
-    $('btnJoinVideo').onclick = () => { $('imageMenu').hidden = true; if (menuImage) setupJoinPage.add({ filename: menuImage.filename, subfolder: menuImage.subfolder || '', type: 'output' }, true); };
     $('steps').oninput = () => ($('stepsVal').textContent = $('steps').value);
     $('cfg').oninput = () => ($('cfgVal').textContent = fmt($('cfg').value));
     $('denoise').oninput = () => ($('denoiseVal').textContent = Number($('denoise').value).toFixed(2));
     $('hiresOn').onchange = syncHires;
-    $('adetHand').onchange = syncAdet;
-    $('adetHandDenoise').oninput = () => ($('adetHandDenoiseVal').textContent = Number($('adetHandDenoise').value).toFixed(2));
     $('hiresScale').oninput = () => { $('hiresScaleVal').textContent = fmt($('hiresScale').value, 2); syncHires(); };
     $('hiresSteps').oninput = () => ($('hiresStepsVal').textContent = $('hiresSteps').value);
     $('hiresDenoise').oninput = () => ($('hiresDenoiseVal').textContent = Number($('hiresDenoise').value).toFixed(2));
-    $('modeTabs').onclick = (e) => { const b = e.target.closest('.tab'); if (!b) return; const leavePages = () => { $('taggerPage').hidden = true; $('upPage').hidden = true; $('joinPage').hidden = true; $('layout').classList.remove('tagger'); };
-      if (b.dataset.mode === 'tagger') { leavePages(); setupTagger.open(); } else if (b.dataset.mode === 'upscale') { leavePages(); setupUpscalePage.open(); } else if (b.dataset.mode === 'join') { leavePages(); setupJoinPage.open(); } else { leavePages(); switchMode(b.dataset.mode); } };
+    $('modeTabs').onclick = (e) => { const b = e.target.closest('.tab'); if (b) switchMode(b.dataset.mode); };
 
     // 來源圖：點擊 / 拖到 dropzone / 貼上
     const dz = $('dropzone');
@@ -1846,7 +1560,6 @@
     };
     $('btnEditMask').onclick = () => { if (state.source) HYInpaint.show(true); };
     setupMiniDrops();
-    setupTagger();
     $('btnResultAsSource').onclick = async () => {
       if (!state.current) return;
       const im = state.current.item.images[state.current.idx];
@@ -1869,7 +1582,7 @@
       const key = e.dataTransfer.getData('application/x-yomu-output');
       const f = e.dataTransfer.files[0];
       if (!key && !f) return;
-      if (document.querySelector('.modal:not([hidden])') || !$('taggerPage').hidden || !$('upPage').hidden || !$('joinPage').hidden) return;
+      if (document.querySelector('.modal:not([hidden])')) return;
       const usesSource = ['img2img', 'inpaint', 'img2video'].includes(state.mode);
       if (key) {
         const item = GV.items.find(it => it && `${it.subfolder}/${it.filename}` === key);

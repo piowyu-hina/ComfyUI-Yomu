@@ -14,7 +14,7 @@
   function filters() {
     const fams = HY().compatFamilies();
     const bases = $('cvBase').value === 'auto' ? fams.flatMap(f => BASE_BY_FAMILY[f] || []) : ($('cvBase').value === 'all' ? [] : [$('cvBase').value]);
-    const noBase = ['Upscaler', 'VAE', 'Wildcards'].includes($('cvType').value);   // 放大模型 / VAE 不分底模
+    const noBase = ['Upscaler', 'VAE'].includes($('cvType').value);   // 放大模型 / VAE 不分底模
     return { types: $('cvType').value, baseModels: noBase ? '' : bases.join(','), sort: $('cvSort').value, nsfw: $('cvNsfw').checked ? '1' : '0', query: $('cvSearch').value.trim() };
   }
 
@@ -132,7 +132,6 @@
     if (t === 'textualinversion') return 'embeddings';
     if (t === 'vae') return 'vae';
     if (t === 'upscaler') return 'upscale_models';
-    if (t === 'wildcards') return 'wildcards';
     if (t === 'checkpoint') return /anima|flux|wan|qwen|hunyuan|ltx|z-?image|lumina|cosmos|hidream|chroma|sd ?3/i.test(base || '') ? 'diffusion_models' : 'checkpoints';
     return t;
   }

@@ -43,12 +43,12 @@ tools/open_browser.py  啟動後自動開 App（start_service.bat 用）
 
 ## 啟動 / 停止 ComfyUI
 
-`D:\ComfyUI\launcher\launcher.py` 是常駐的小啟動器（http://127.0.0.1:8189），
-有啟動／停止／重啟按鈕與即時 log，ComfyUI 起來後會自動開 Yomu。
+`launcher/launcher.py` 是常駐的小啟動器（http://127.0.0.1:8189），一個按鈕切換啟動／停止，
+有即時 log、「更新 Yomu」「更新 ComfyUI」按鈕；ComfyUI 起來後會自動開 Yomu。有裝 Electron 就用 Electron 視窗，沒有就用 Edge / Chrome 的 App 視窗。
 
-- `launch.vbs`：桌面捷徑用，以本機 Electron 開啟 `launcher/yomu.cjs`，需要時自動啟動 ComfyUI
-- `start_launcher.vbs`：放進「開機自動執行」用，只常駐啟動器不開瀏覽器
-- `start_service.bat`：備用，直接在黑視窗跑 ComfyUI（不經啟動器）
+- `launcher/launch.vbs`：桌面捷徑用，開啟啟動器視窗
+- `launcher/start_launcher.vbs`：放進「開機自動執行」用，只常駐啟動器、不開視窗
+- `launcher/start_service.bat`：備用，直接在黑視窗跑 ComfyUI（不經啟動器）
 
 ## Hires Fix 與圖片參數
 
@@ -58,7 +58,7 @@ tools/open_browser.py  啟動後自動開 App（start_service.bat 用）
 - 點選 LoRA 卡片加入／移除，權重在提示詞下方調整，clip 固定 1.0。也可直接輸入 `<lora:名:權重>`。
 - 點選 embedding 卡片會在正面提示詞游標位置插入 `embedding:名稱`。
 - 模型卡片使用模型旁的 `.preview.png/.jpeg/.jpg/.webp` 或同名圖片；沒有本機圖片時顯示名稱縮寫，不自動下載。
-- 生成的 PNG 會多一個 `yomu` 文字區塊，把 PNG 拖到右邊預覽區（或按「讀取圖片參數」）就能還原全部設定。
+- 生成的 PNG 會多一個 `yomu` 文字區塊，把 PNG 拖到畫面任何位置就能還原全部設定；用到的模型這台沒有時，會跳出視窗列出來並可直接到 Civitai 搜尋。
   也能讀 Stability Matrix、A1111、一般 ComfyUI 的圖；提示詞裡的 `<lora:名:權重>` 會自動轉成 LoRA 列。
 
 ## 圖庫
@@ -69,7 +69,7 @@ tools/open_browser.py  啟動後自動開 App（start_service.bat 用）
 
 ## 桌面捷徑
 
-`Yomu.lnk`（桌面）→ `launch.vbs` → Yomu App。圖示在 `assets/yomu.ico`。
+`Yomu.lnk`（桌面）→ `launcher/launch.vbs` → 啟動器視窗 → 按「啟動 ComfyUI」→ Yomu 視窗。圖示在 `assets/yomu.ico`。
 App 預設最大化，同時只開一個主視窗；關閉視窗不會停止 ComfyUI。F5 重新載入介面。
 App 的設定與紀錄存在 `user/yomu-app/`，與瀏覽器分開；可匯入舊 PNG 還原生成參數。
 
@@ -94,29 +94,14 @@ GrowMask → SetLatentNoiseMask → KSampler → ImageCompositeMasked 只把遮�
 - `txt2video`：Wan2.2 TI2V-5B 原版 20 步 CFG 5，品質稍好但約 3–4 分鐘
 - `txt2video_fast`：Wan2.1 1.3B 480p，快速測試用
 插槽：`@latent`（Wan22ImageToVideoLatent / EmptyHunyuanLatentVideo：width/height/length）、`@shift`、`@video`（CreateVideo fps）、`@save`（SaveVideo）。
-幀數欄位對應 length；影片模式沒有 Hires / 張數。圖庫會列出 mp4（縮圖用 PyAV 抓第 0.5 秒），預覽區與大圖用 `<video>` 播放。
-
-## ADetailer（修臉修手）
-
-需要 `custom_nodes/ComfyUI-Impact-Pack` + `ComfyUI-Impact-Subpack`，偵測模型在 `models/ultralytics/bbox/`（face_yolov8m、hand_yolov8s）。
-`txt2img.json` 裡 `@adet_face*`（FaceDetailer，用同一個 SDXL 模型）與 `@adet_hand*`（FaceDetailer，用 Anima 模型＋Qwen3 文字編碼器＋Qwen VAE）。
-前端 `applyStages()` 把 hires → 修臉 → 修手 串成一條鏈，關掉的段整組拔掉、下一段接回上一段，最後接 `@save`。
-Anima 那一段的提示詞會自動拿掉 SDXL embedding。
-
-## 字卡（wildcards）與 Anima 整張精修
-
-- 字卡放 `models/wildcards/**/*.txt`（一行一個），提示詞用 `__名字__`（名字 = 相對路徑去副檔名）抽一行，`{A|B|C}` 就地抽；
-  `web/wildcards.js` 在送出前用 seed 決定抽到什麼（同 seed 同結果）；
-  展開後的提示詞與抽到的項目（`picks`）都寫進 PNG，載入參數可原樣還原。自己的字卡存在 `models/wildcards/我的/`。
-- 已下載的字卡包：The Prompt Builder（Pony/Illustrious）、Illustrious-XL Characters & Artists（2 萬個角色/畫師）、5770 Anime & Game Characters。
-- `@refine_*`：Anima 整張精修階段（VAEEncode → KSampler denoise 0.35 → VAEDecode），鏈順序 hires → refine → 修臉 → 修手。
+幀數欄位對應 length；影片模式沒有 Hires。圖庫會列出 mp4（縮圖用 PyAV 抓第 0.5 秒），預覽區與大圖用 `<video>` 播放。
 
 ## 圖生影片
 
 分頁「圖生影片」或圖片右鍵「🎬 讓它動起來」。範本 `img2video.json`：Wan2.2 I2V 14B high/low（`@ckpt` 選 high，low 由檔名 high→low 推得）
 ＋ lightx2v 4 步 LoRA（`@speed_lora_*`，選到 DaSiWa Lightspeed 時自動拔掉，因為它內建 4 步）＋ `WanImageToVideo`（@latent）
 ＋ 兩段 `KSamplerAdvanced`（@sampler / @sampler_low，各跑一半步數）＋ RIFE 補幀 ×2（@vfi）→ 32fps mp4。
-來源圖放進來會自動把尺寸設成同比例（長邊 896）。4070 上 496×896×81 幀約 2–3 分鐘。
+需要 `ComfyUI-Frame-Interpolation`（RIFE 補幀節點，安裝程式會一起裝）。來源圖放進來會自動把尺寸設成同比例（長邊 896）。4070 上 496×896×81 幀約 2–3 分鐘。
 
 ## 安裝與更新（給朋友）
 
