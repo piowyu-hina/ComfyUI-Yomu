@@ -146,9 +146,8 @@ window.PngInfo = (() => {
    * 欄位都可能缺；呼叫端用現有值補。
    */
   function parseParams(chunks) {
-    // 1. Yomu 自己存的（舊名 hinayome、inference_ui 也認）
-    const mineRaw = chunks.yomu || chunks.hinayome || chunks.inference_ui;
-    const mine = mineRaw && tryJson(mineRaw);
+    // 1. Yomu 自己存的
+    const mine = chunks.yomu && tryJson(chunks.yomu);
     if (mine && mine.pos != null) return { ...mine, origin: 'yomu' };
 
     // 2. Stability Matrix

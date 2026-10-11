@@ -122,7 +122,7 @@ def read_video_tags(src):
     """影片容器的文字 metadata：SaveVideo 會把 extra_pnginfo 的每個 key 寫進來（Yomu 的參數在 yomu 裡）"""
     import av
     with av.open(src) as c:
-        return {k: v for k, v in c.metadata.items() if k in ("yomu", "hinayome", "prompt", "workflow")}
+        return {k: v for k, v in c.metadata.items() if k in ("yomu", "prompt", "workflow")}
 
 
 def read_png_text(full):

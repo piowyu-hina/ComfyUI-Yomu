@@ -1006,13 +1006,9 @@
   }
   /** 載入圖／影片的參數後，把當時的來源圖與結尾圖放回去；檔案還在 input 裡就帶入，不在就留白。回傳要提示的字 */
   async function restoreSources(p) {
-    // 改名前存的圖，來源圖放在 input/hinayome/，現在是 input/yomu/
     const fetchInput = async (name, subfolder) => {
-      for (const sub of subfolder === 'hinayome' ? ['yomu', 'hinayome'] : [subfolder]) {
-        const r = name ? await fetch(viewUrl({ filename: name, subfolder: sub, type: 'input' })).catch(() => null) : null;
-        if (r?.ok) return { blob: await r.blob(), subfolder: sub };
-      }
-      return null;
+      const r = name ? await fetch(viewUrl({ filename: name, subfolder, type: 'input' })).catch(() => null) : null;
+      return r?.ok ? { blob: await r.blob(), subfolder } : null;
     };
     const notes = [];
     const src = p.source, found = await fetchInput(src?.name, src?.subfolder || '');
