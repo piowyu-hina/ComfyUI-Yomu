@@ -122,5 +122,5 @@ Anima 那一段的提示詞會自動拿掉 SDXL embedding。
 
 - 沒有 ComfyUI：下載這個倉庫的 ZIP，解開後執行 `installer\Yomu-Setup.bat`。它會開一個安裝網頁，下載 ComfyUI、建好 Python 環境、裝 PyTorch 與 Yomu，並在桌面建 `Yomu` 捷徑。模型不包含，進 Yomu 後照缺模型視窗到 Civitai 下載。
 - 已經有 ComfyUI：把這個倉庫 `git clone` 到 `custom_nodes/ComfyUI-Yomu`，執行 `launcher\launch.vbs` 開啟。
-- 更新：Yomu 右上角「⬆ 更新」或啟動器的「更新 ComfyUI」，會對 ComfyUI 本體和 `custom_nodes` 內每個 git 倉庫（含 Yomu）做 `git pull --ff-only`。只有按下去才會連網。
+- 更新：啟動器頁面有兩個按鈕，「更新 Yomu」只更新 Yomu（含啟動器），「更新 ComfyUI」更新 ComfyUI 本體和其他自訂節點並視需要 `pip install`；都是 `git pull --ff-only`，只有按下去才會連網。
 - 啟動器自己（`launcher/`）有更新時，更新記錄會提示要關掉啟動器再重開。

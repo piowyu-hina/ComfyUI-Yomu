@@ -1,5 +1,5 @@
 """
-ComfyUI 啟動器 —— 常駐在 http://127.0.0.1:8189 的小網頁，用來啟動 / 停止 ComfyUI。
+Yomu 啟動器 —— 常駐在 http://127.0.0.1:8189 的小網頁，用來啟動 / 停止 ComfyUI。
 
 只用 Python 標準庫，不依賴 venv 內任何套件；用 pythonw 執行就不會有黑視窗。
 ComfyUI 本體的 stdout / stderr 會導到 user/comfyui_console.log，頁面上即時顯示。
@@ -34,6 +34,7 @@ COMFY_HOST, COMFY_PORT = "127.0.0.1", 8188
 LAUNCHER_HOST, LAUNCHER_PORT = "127.0.0.1", 8189
 CONSOLE_LOG = os.path.join(COMFY_DIR, "user", "comfyui_console.log")
 INFERENCE_URL = f"http://{COMFY_HOST}:{COMFY_PORT}/yomu"
+LAUNCHER_URL = f"http://{LAUNCHER_HOST}:{LAUNCHER_PORT}/"
 
 _proc = None            # 由啟動器自己拉起來的 ComfyUI 程序
 _lock = threading.Lock()
@@ -50,16 +51,29 @@ BROWSERS = [
 ]
 
 
-def open_app():
-    """優先 Electron App；沒裝就用 Edge/Chrome 的 --app 視窗；再不行就一般瀏覽器"""
-    if os.path.isfile(ELECTRON):
-        subprocess.Popen([ELECTRON, os.path.join(LAUNCHER_DIR, "yomu.cjs")], cwd=COMFY_DIR)
-        return
+def open_in_window(url, size):
+    """優先 Edge/Chrome 的 --app 視窗（沒有網址列）；都沒有就用預設瀏覽器"""
     for exe in BROWSERS:
         if os.path.isfile(exe):
-            subprocess.Popen([exe, f"--app={INFERENCE_URL}", "--window-size=1680,1000"], creationflags=0x00000008)
+            subprocess.Popen([exe, f"--app={url}", f"--window-size={size}"], creationflags=0x00000008)
             return
-    webbrowser.open(INFERENCE_URL)
+    webbrowser.open(url)
+
+
+def open_window(flag, url, size):
+    """優先 Electron（yomu.cjs --launcher / --yomu）；沒裝就用 Edge/Chrome 的 App 視窗"""
+    if os.path.isfile(ELECTRON):
+        subprocess.Popen([ELECTRON, os.path.join(LAUNCHER_DIR, "yomu.cjs"), flag], cwd=COMFY_DIR)
+    else:
+        open_in_window(url, size)
+
+
+def open_yomu():
+    open_window("--yomu", INFERENCE_URL, "1680,1000")
+
+
+def open_launcher():
+    open_window("--launcher", LAUNCHER_URL, "820,900")
 
 
 def port_open(host, port, timeout=0.4):
@@ -106,8 +120,6 @@ def status():
         "pid": _proc.pid if own_alive else (find_pid_on_port(COMFY_PORT) if listening else None),
         "uptime": int(time.time() - _started_at) if (own_alive and _started_at) else None,
         "version": _comfy_version(),
-        "inference_url": INFERENCE_URL,
-        "comfy_url": f"http://{COMFY_HOST}:{COMFY_PORT}/",
     }
 
 
@@ -130,6 +142,7 @@ def start():
             stdin=subprocess.DEVNULL,
             creationflags=0x08000000,     # CREATE_NO_WINDOW
         )
+        log.close()
         _started_at = time.time()
         return {"ok": True, "msg": f"已啟動 (PID {_proc.pid})"}
 
@@ -220,7 +233,7 @@ def _file_hash(path):
         return ""
 
 
-def _update_job(restart):
+def _update_job(target):
     with _update_lock:
         _update.update(running=True, ok=None, log=[], started=time.time(), finished=0)
     try:
@@ -233,10 +246,13 @@ def _update_job(restart):
         _ulog(f"目前 Yomu 版本：{_git_out(['rev-parse', '--short', 'HEAD'], YOMU_DIR) or '?'}")
         _ulog("檢查更新…")
         nodes_dir = os.path.join(COMFY_DIR, "custom_nodes")
-        repos = [("ComfyUI 本體", COMFY_DIR)] + [
-            (d, os.path.join(nodes_dir, d)) for d in sorted(os.listdir(nodes_dir))
-            if os.path.isdir(os.path.join(nodes_dir, d, ".git"))
-        ]
+        if target == "yomu":
+            repos = [("Yomu", YOMU_DIR)]
+        else:
+            repos = [("ComfyUI 本體", COMFY_DIR)] + [
+                (d, os.path.join(nodes_dir, d)) for d in sorted(os.listdir(nodes_dir))
+                if os.path.isdir(os.path.join(nodes_dir, d, ".git")) and os.path.join(nodes_dir, d) != YOMU_DIR
+            ]
         todo = []
         for name, path in repos:
             b = _behind(path)
@@ -282,19 +298,20 @@ def _update_job(restart):
         yomu_after = _git_out(["rev-parse", "HEAD"], YOMU_DIR)
         if yomu_before != yomu_after and _git_out(["diff", "--name-only", yomu_before, yomu_after, "--", "launcher"], YOMU_DIR):
             _ulog("!! 啟動器本身有更新，請關掉啟動器再重開才會生效")
-        if _file_hash(req) != req_before:
-            _ulog("== 相依套件（requirements.txt 有變）==")
-            if _run_cmd([PYTHON, "-m", "pip", "--version"], COMFY_DIR) != 0:
-                _ulog("venv 沒有 pip，先安裝…")
-                _run_cmd([PYTHON, "-m", "ensurepip", "--upgrade"], COMFY_DIR)
-            if _run_cmd([PYTHON, "-m", "pip", "install", "-r", "requirements.txt"], COMFY_DIR) != 0:
-                ok = False
-                _ulog("!! pip install 失敗")
-        else:
-            _ulog("requirements.txt 沒變，略過套件安裝")
+        if target == "comfyui":
+            if _file_hash(req) != req_before:
+                _ulog("== 相依套件（requirements.txt 有變）==")
+                if _run_cmd([PYTHON, "-m", "pip", "--version"], COMFY_DIR) != 0:
+                    _ulog("venv 沒有 pip，先安裝…")
+                    _run_cmd([PYTHON, "-m", "ensurepip", "--upgrade"], COMFY_DIR)
+                if _run_cmd([PYTHON, "-m", "pip", "install", "-r", "requirements.txt"], COMFY_DIR) != 0:
+                    ok = False
+                    _ulog("!! pip install 失敗")
+            else:
+                _ulog("requirements.txt 沒變，略過套件安裝")
 
-        _ulog(f"更新後版本：{_comfy_version()}（{_git_out(['rev-parse', '--short', 'HEAD'], COMFY_DIR)}）")
-        if restart and was_running:
+        _ulog(f"更新後版本：ComfyUI {_comfy_version()}（{_git_out(['rev-parse', '--short', 'HEAD'], COMFY_DIR)}）、Yomu {_git_out(['rev-parse', '--short', 'HEAD'], YOMU_DIR) or '?'}")
+        if was_running:
             _ulog("重新啟動 ComfyUI…")
             start()
         _ulog("完成" if ok else "完成（有錯誤，請看上面）")
@@ -305,11 +322,11 @@ def _update_job(restart):
         _update.update(running=False, ok=ok, finished=time.time())
 
 
-def start_update(restart=True):
+def start_update(target):
     with _update_lock:
         if _update["running"]:
             return {"ok": False, "msg": "已經在更新中"}
-    threading.Thread(target=_update_job, args=(restart,), daemon=True).start()
+    threading.Thread(target=_update_job, args=(target,), daemon=True).start()
     return {"ok": True, "msg": "開始更新"}
 
 
@@ -336,7 +353,7 @@ def tail_log(max_bytes=24000):
 PAGE = r"""<!DOCTYPE html>
 <html lang="zh-TW"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ComfyUI 啟動器</title>
+<title>Yomu 啟動器</title>
 <style>
 :root{--bg:#0f1117;--bg2:#161a24;--bg3:#1d2230;--line:#2a3142;--text:#e6e9f0;--muted:#8b93a7;--accent:#7c6cf6;--ok:#3ecf8e;--warn:#fbbf24;--danger:#e5484d}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -362,15 +379,13 @@ pre{background:#0a0c12;border:1px solid var(--line);border-radius:9px;padding:12
 label{display:flex;align-items:center;gap:6px;cursor:pointer}
 </style></head><body>
 <div class="card">
-  <h1><span class="badge">COMFYUI</span>啟動器</h1>
+  <h1><span class="badge">YOMU</span>啟動器</h1>
   <div class="status"><span class="dot" id="dot"></span><span id="stateText">查詢中…</span></div>
   <div class="btns">
-    <button class="primary" id="btnStart">▶ 啟動 ComfyUI</button>
-    <button class="danger" id="btnStop">■ 停止</button>
-    <button id="btnRestart">⟳ 重新啟動</button>
-    <button id="btnUpdate" title="git pull + pip install，更新期間會先停止 ComfyUI，完成後自動重啟">⬆ 更新 ComfyUI</button>
-    <a class="btn" id="lnkInference" href="__INFERENCE__" target="_blank">✦ Yomu ↗</a>
-    <a class="btn" id="lnkComfy" href="__COMFY__" target="_blank">節點畫布 ↗</a>
+    <button class="primary" id="btnToggle">▶ 啟動 ComfyUI</button>
+    <button id="btnUpdateYomu" title="只更新 Yomu（含啟動器），不動 ComfyUI 和套件">⬆ 更新 Yomu</button>
+    <button id="btnUpdateComfy" title="更新 ComfyUI 本體與其他自訂節點（git pull + pip install），不含 Yomu">⬆ 更新 ComfyUI</button>
+    <button class="primary" id="btnYomu">✦ 開啟 Yomu</button>
   </div>
   <div class="row">
     <span class="muted">ComfyUI 輸出（user/comfyui_console.log）</span>
@@ -392,11 +407,11 @@ async function refresh(){
     if(s.state!==state){state=s.state;$('dot').className='dot '+state;}
     $('stateText').textContent=names[state]+(s.version?`  ·  v${s.version}`:'')+(s.pid?`  ·  PID ${s.pid}`:'')+(s.uptime!=null?`  ·  ${Math.floor(s.uptime/60)} 分 ${s.uptime%60} 秒`:'');
     const up=state==='running'||state==='external';
-    $('btnStart').disabled=up||state==='starting';
-    $('btnStop').disabled=state==='stopped';
-    $('btnRestart').disabled=state==='stopped';
-    $('lnkInference').style.opacity=$('lnkComfy').style.opacity=up?1:.4;
-    if(up&&wantOpen){wantOpen=false;window.open(s.inference_url,'_blank');}
+    const running=state!=='stopped';
+    $('btnToggle').textContent=running?'■ 停止 ComfyUI':'▶ 啟動 ComfyUI';
+    $('btnToggle').className=running?'danger':'primary';
+    $('btnYomu').disabled=!up;
+    if(up&&wantOpen){wantOpen=false;api('/api/open-yomu','POST');}
     const pre=$('log');const atBottom=pre.scrollTop+pre.clientHeight>=pre.scrollHeight-8;
     const t=await (await fetch('/api/log')).text();
     if(t!==pre.textContent){pre.textContent=t;if(atBottom)pre.scrollTop=pre.scrollHeight;}
@@ -404,23 +419,24 @@ async function refresh(){
 }
 async function start(){wantOpen=$('autoOpen').checked;const r=await api('/api/start','POST');$('stateText').textContent=r.msg;refresh();}
 async function stop(){wantOpen=false;const r=await api('/api/stop','POST');$('stateText').textContent=r.msg;refresh();}
-$('btnStart').onclick=start;
-$('btnStop').onclick=stop;
-$('btnRestart').onclick=async()=>{await api('/api/stop','POST');setTimeout(start,1500);};
+$('btnToggle').onclick=()=>state==='stopped'?start():stop();
+$('btnYomu').onclick=()=>api('/api/open-yomu','POST');
 let updTimer=null;
 async function pollUpdate(){
   const u=await api('/api/update/status');
   $('updRow').hidden=$('updLog').hidden=false;
   $('updLog').textContent=u.log.join('\n'); $('updLog').scrollTop=$('updLog').scrollHeight;
   $('updState').textContent=u.running?'更新中…':(u.ok===null?'':(u.ok?'完成':'完成（有錯誤）'));
-  $('btnUpdate').disabled=u.running;
+  $('btnUpdateYomu').disabled=$('btnUpdateComfy').disabled=u.running;
   if(!u.running&&updTimer){clearInterval(updTimer);updTimer=null;}
 }
-$('btnUpdate').onclick=async()=>{
-  if(!confirm('更新 ComfyUI 本體與自訂節點（git pull + pip install）？\n更新期間 ComfyUI 會先停止，完成後自動重啟。'))return;
-  const r=await api('/api/update','POST'); $('stateText').textContent=r.msg;
+const runUpdate=(target,ask)=>async()=>{
+  if(!confirm(ask+'\n更新期間 ComfyUI 會先停止，完成後自動重啟。'))return;
+  const r=await api('/api/update?target='+target,'POST'); $('stateText').textContent=r.msg;
   if(r.ok&&!updTimer){pollUpdate();updTimer=setInterval(pollUpdate,1500);}
 };
+$('btnUpdateYomu').onclick=runUpdate('yomu','更新 Yomu（含啟動器）？');
+$('btnUpdateComfy').onclick=runUpdate('comfyui','更新 ComfyUI 本體與其他自訂節點（git pull + pip install）？');
 api('/api/update/status').then(u=>{if(u.running){pollUpdate();updTimer=setInterval(pollUpdate,1500);}});
 refresh();setInterval(refresh,1500);
 if(new URLSearchParams(location.search).get('autostart')==='1'){start();history.replaceState(null,'',location.pathname);}
@@ -438,10 +454,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
-        origin = self.headers.get("Origin", "")
-        if urllib.parse.urlparse(origin).hostname in ("127.0.0.1", "localhost"):
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(data)
 
@@ -457,11 +469,16 @@ class Handler(BaseHTTPRequestHandler):
                 return False
         return True
 
+    def _host_ok(self):
+        """只收 127.0.0.1 / localhost 的 Host，擋 DNS rebinding"""
+        return self.headers.get("Host", "") in (f"{LAUNCHER_HOST}:{LAUNCHER_PORT}", f"localhost:{LAUNCHER_PORT}")
+
     def do_GET(self):
+        if not self._host_ok():
+            return self._send(403, "forbidden", "text/plain")
         path = urllib.parse.urlparse(self.path).path
         if path == "/":
-            page = PAGE.replace("__INFERENCE__", INFERENCE_URL).replace("__COMFY__", f"http://{COMFY_HOST}:{COMFY_PORT}/")
-            return self._send(200, page, "text/html; charset=utf-8")
+            return self._send(200, PAGE, "text/html; charset=utf-8")
         if path == "/api/status":
             return self._send(200, json.dumps(status()))
         if path == "/api/log":
@@ -471,16 +488,21 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, "not found", "text/plain")
 
     def do_POST(self):
-        if not self._same_site():
+        if not self._host_ok() or not self._same_site():
             return self._send(403, '{"ok":false,"msg":"forbidden"}')
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/start":
             return self._send(200, json.dumps(start()))
         if path == "/api/stop":
             return self._send(200, json.dumps(stop()))
+        if path == "/api/open-yomu":
+            open_yomu()
+            return self._send(200, '{"ok":true}')
         if path == "/api/update":
-            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            return self._send(200, json.dumps(start_update(restart=qs.get("restart", ["1"])[0] != "0")))
+            target = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("target", [""])[0]
+            if target not in ("yomu", "comfyui"):
+                return self._send(400, '{"ok":false,"msg":"target 必須是 yomu 或 comfyui"}')
+            return self._send(200, json.dumps(start_update(target)))
         self._send(404, '{"ok":false}')
 
 
@@ -489,12 +511,12 @@ def main():
 
     if port_open(LAUNCHER_HOST, LAUNCHER_PORT):
         if open_page:
-            open_app()
+            open_launcher()
         return
 
     server = ThreadingHTTPServer((LAUNCHER_HOST, LAUNCHER_PORT), Handler)
     if open_page:
-        threading.Timer(0.6, open_app).start()
+        threading.Timer(0.6, open_launcher).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
