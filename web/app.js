@@ -182,7 +182,7 @@
     const ownModel = slotId(t, 'ckpt') ? (t[slotId(t, 'ckpt')].inputs.unet_name || t[slotId(t, 'ckpt')].inputs.ckpt_name) : '';
     fillCkptSelect(ownModel && ckptListAll(name).includes(ownModel) ? ownModel : undefined);
     $('clipskip').closest('.field').hidden = !slotId(t, 'clipskip');
-    $('fieldFp8').hidden = !('weight_dtype' in (t[slotId(t, 'ckpt')]?.inputs || {}));   // 只有 UNETLoader 型範本有 fp8 可選
+    $('fieldFp8').hidden = !('weight_dtype' in (t[slotId(t, 'ckpt')]?.inputs || {})) || !!slotId(t, 'ckpt_low');   // 只有 UNETLoader 型範本有 fp8 可選；14B 高低噪兩段的檔案本來就是 fp8，不給選
     $('hiresOn').closest('.card').hidden = !slotId(t, 'hires_sampler');
     $('fieldEndImage').hidden = !slotId(t, 'load_end_image');
     $('fieldShrink').hidden = !slotId(t, 'shrink');
@@ -665,7 +665,9 @@
   async function loadParamsFromFile(file) {
     const video = !!file && (isVideoFile(file.name) || file.type.startsWith('video/'));
     if (!file || !(video || file.type.startsWith('image/'))) { toast('請拖圖片或影片檔', true); return; }
-    let raw = PngInfo.parseParams(await readFileTags(file, video));
+    let tags;
+    try { tags = await readFileTags(file, video); } catch { toast('讀取參數失敗：請確認 ComfyUI 已重新啟動到最新版', true); return; }
+    let raw = PngInfo.parseParams(tags);
     if (video && raw?.source !== 'yomu') raw = null;   // 影片只認 Yomu 自己存的參數
     if (!raw) {
       if (!video && ['img2img', 'inpaint', 'img2video'].includes(state.mode)) { uploadFile(file, { keepMode: true }); return; }
