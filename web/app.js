@@ -898,7 +898,7 @@
     // 圖生影片：多幾個「跟來源同比例」的快捷（依長邊）
     const srcOpts = [];
     if (state.mode === 'img2video' && state.source?.width && state.source?.height) {
-      for (const [long, label] of [[640, '480p 等級'], [896, '標準'], [1280, '720p 等級（慢）']]) {
+      for (const [long, label] of [[640, '480p 等級'], [704, '快速'], [896, '標準'], [1280, '720p 等級（慢）']]) {
         const [w, h] = fitSource(long);
         srcOpts.push([`${w}x${h}`, `同來源比例 ${w} × ${h}（${label}）`]);
       }
