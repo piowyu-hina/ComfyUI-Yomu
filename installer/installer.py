@@ -7,9 +7,11 @@ git clone Yomu 與勾選的自訂節點 → 桌面捷徑。模型不在這裡下
 import json
 import os
 import shutil
+import re
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,28 +31,50 @@ NODES = [
 NO_WINDOW = 0x08000000
 MIN_FREE_GB = 12
 
-_job = {"running": False, "ok": None, "log": [], "step": 0, "steps": 1, "dest": ""}
+_job = {"running": False, "ok": None, "log": [], "step": 0, "steps": 1, "dest": "", "name": "", "file": "", "now": "", "last": 0.0}
 _lock = threading.Lock()
+PIP_PROGRESS = re.compile(r"^Progress (\d+) of (\d+)$")
+GIT_PROGRESS = re.compile(r"^\s*(Updating files:|Receiving objects:|Resolving deltas:|remote: )")
+
+
+def note(text):
+    """目前在做什麼（只顯示最新一行，不進記錄）"""
+    with _lock:
+        _job.update(now=text, last=time.time())
 
 
 def log(line):
     with _lock:
         _job["log"].append(line)
+    note(line.strip())
 
 
 def run(args, cwd=None, env=None):
     log("$ " + " ".join(args))
+    env = dict(os.environ if env is None else env, PIP_PROGRESS_BAR="raw")
     p = subprocess.Popen(args, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                          encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
     for line in p.stdout:
-        log("  " + line.rstrip())
+        line = line.rstrip()
+        progress = PIP_PROGRESS.match(line)
+        if progress:
+            done, total = int(progress[1]), int(progress[2])
+            note(f"{_job['file']}  {done * 100 // total}%（{done >> 20} / {total >> 20} MB）")
+        elif GIT_PROGRESS.match(line):
+            note(line.strip())
+        else:
+            if line.lstrip().startswith("Downloading "):
+                _job["file"] = line.split()[1]
+            log("  " + line)
     return p.wait()
 
 
 def step(text):
     with _lock:
         _job["step"] += 1
+        _job["name"] = text
         _job["log"].append(f"== {text} ==")
+    note(text)
 
 
 def find_git():
@@ -115,7 +139,7 @@ def install_job(opts):
     groups = [g for g in NODES if g[0] in opts["nodes"]]
     repos = [(u, os.path.join(dest, "custom_nodes", u.rsplit("/", 1)[1][:-4])) for g in groups for u in g[3]]
     with _lock:
-        _job.update(running=True, ok=None, log=[], step=0, steps=6 + len(repos), dest=dest)
+        _job.update(running=True, ok=None, log=[], step=0, steps=6 + len(repos), dest=dest, name="", file="", now="", last=time.time())
     ok = False
     try:
         step("檢查 Git")
@@ -200,6 +224,7 @@ pre{background:#0a0c12;border:1px solid var(--line);border-radius:9px;padding:12
 <label class="f">Yomu 的 GitHub 網址<input type="text" id="repo"></label>
 <div style="display:flex;gap:10px"><button id="go">開始安裝</button><button id="open" disabled>開啟 Yomu</button></div>
 <div class="track"><div class="fill" id="fill"></div></div>
+<div id="now" class="muted" style="white-space:pre-line"></div>
 <pre id="log"></pre>
 </div>
 <script>
@@ -220,6 +245,10 @@ async function poll(){
   const s=await api('/api/status');
   $('log').textContent=s.log.join('\n'); $('log').scrollTop=$('log').scrollHeight;
   $('fill').style.width=(s.step/s.steps*100)+'%';
+  const idle=Math.round(s.ts-s.last);
+  $('now').textContent=s.running?`步驟 ${s.step} / ${s.steps}：${s.name}
+${s.now}`+(idle>20?`
+已 ${idle} 秒沒有新訊息，正在下載或安裝，網路慢時屬正常，請不要關掉。`:''):'';
   $('go').disabled=s.running;
   if(!s.running){clearInterval(timer);timer=null;$('open').disabled=!s.ok;if(s.ok)$('fill').style.width='100%';}
 }
@@ -256,7 +285,7 @@ class Handler(BaseHTTPRequestHandler):
                 "nodes": [{"key": k, "label": label, "on": on} for k, label, on, _ in NODES], "running": _job["running"]}))
         if path == "/api/status":
             with _lock:
-                return self._send(200, json.dumps(_job))
+                return self._send(200, json.dumps({**_job, "ts": time.time()}))
         self._send(404, "not found", "text/plain")
 
     def do_POST(self):
