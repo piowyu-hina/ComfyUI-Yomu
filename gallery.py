@@ -7,6 +7,7 @@
 """
 import asyncio
 import hashlib
+import io
 import mimetypes
 import os
 import struct
@@ -115,6 +116,13 @@ def _video_frame(full):
                 return frame.to_image()
             last = frame
         return last.to_image()
+
+
+def read_video_tags(src):
+    """影片容器的文字 metadata：SaveVideo 會把 extra_pnginfo 的每個 key 寫進來（Yomu 的參數在 yomu 裡）"""
+    import av
+    with av.open(src) as c:
+        return {k: v for k, v in c.metadata.items() if k in ("yomu", "hinayome", "prompt", "workflow")}
 
 
 def read_png_text(full):
@@ -230,6 +238,18 @@ def register(routes):
         full = _safe_path(q.get("filename", ""), q.get("subfolder", ""))
         if not full or not os.path.isfile(full):
             return web.Response(status=404, text="not found")
+        if full.lower().endswith(VIDEO_EXTS):
+            return web.json_response(await asyncio.to_thread(read_video_tags, full))
         if not full.lower().endswith(".png"):
             return web.json_response({})
         return web.json_response(await asyncio.to_thread(read_png_text, full))
+
+    @routes.post("/yomu/api/videoinfo")
+    async def videoinfo(request):
+        """拖進來的影片檔（不在 output 裡）：讀它的參數，不存檔"""
+        field = await (await request.multipart()).next()
+        data = await field.read(decode=False)
+        try:
+            return web.json_response(await asyncio.to_thread(read_video_tags, io.BytesIO(data)))
+        except Exception:
+            return web.json_response({})

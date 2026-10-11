@@ -543,10 +543,10 @@
     if (GV.open) setTimeout(() => gvLoad(true), 800);
   }
   const isVideoUrl = (u) => /\.(mp4|webm|mkv)(\?|$)/i.test(String(u || '').replace(/^.*filename=/, '').split('&')[0]) || /\.(mp4|webm|mkv)$/i.test(String(u || ''));
-  function showImage(url, isPreview = false) {
+  function showImage(url, isPreview = false, isVideo = isVideoUrl(url)) {
     const img = $('mainImage'), vid = $('mainVideo');
     if (state.mode === 'inpaint') HYInpaint.show(false);
-    if (!isPreview && isVideoUrl(url)) { img.hidden = true; vid.src = url; vid.hidden = false; $('viewerEmpty').hidden = true; $('viewerTools').hidden = false; return; }
+    if (!isPreview && isVideo) { img.hidden = true; vid.src = url; vid.hidden = false; $('viewerEmpty').hidden = true; $('viewerTools').hidden = false; return; }
     vid.hidden = true; vid.removeAttribute('src');
     img.src = url; img.hidden = false;
     $('viewerEmpty').hidden = true;
@@ -649,23 +649,37 @@
     const url = showLocalImage._url = URL.createObjectURL(file);
     const item = { id: 'local-' + Date.now(), ts: Date.now(), mode: params?.mode || 'txt2img', params: params || {}, images: [{ url, filename: file.name, subfolder: '' }] };
     state.current = { item, idx: 0 };
-    showImage(url);
+    showImage(url, false, isVideoFile(file.name) || file.type.startsWith('video/'));
     $('btnOpen').href = url;
     if (params) renderMeta(params); else $('metaBar').textContent = file.name;
   }
+  /** 圖片：PNG 文字區塊；影片：容器 metadata（交給伺服器讀） */
+  async function readFileTags(file, video) {
+    if (video) {
+      const fd = new FormData(); fd.append('file', file, file.name);
+      return fetch('/yomu/api/videoinfo', { method: 'POST', body: fd }).then(r => r.json());
+    }
+    return /png$/i.test(file.name) || file.type === 'image/png' ? PngInfo.readTextChunks(await file.arrayBuffer()) : {};
+  }
+  /** 丟進來的圖／影片：讀參數、切到對應分頁；沒有參數的圖在需要來源圖的分頁就當來源 */
   async function loadParamsFromFile(file) {
-    if (!file || !file.type.startsWith('image/')) { toast('請拖圖片檔', true); return; }
-    const isPng = /png$/i.test(file.name) || file.type === 'image/png';
-    const chunks = isPng ? await PngInfo.readTextChunks(await file.arrayBuffer()) : {};
-    const raw = PngInfo.parseParams(chunks);
-    if (!raw) { showLocalImage(file, null); toast(isPng ? '這張圖裡沒有可讀的生圖參數，只顯示圖片' : '只有 PNG 會帶生圖參數，只顯示圖片'); return; }
+    const video = !!file && (isVideoFile(file.name) || file.type.startsWith('video/'));
+    if (!file || !(video || file.type.startsWith('image/'))) { toast('請拖圖片或影片檔', true); return; }
+    let raw = PngInfo.parseParams(await readFileTags(file, video));
+    if (video && raw?.source !== 'yomu') raw = null;   // 影片只認 Yomu 自己存的參數
+    if (!raw) {
+      if (!video && ['img2img', 'inpaint', 'img2video'].includes(state.mode)) { uploadFile(file, { keepMode: true }); return; }
+      showLocalImage(file, null);
+      toast(video ? '這支影片裡沒有 Yomu 的參數，只顯示影片' : '這張圖裡沒有可讀的生圖參數，只顯示圖片');
+      return;
+    }
     const pos = PngInfo.extractLoras(raw.pos), neg = PngInfo.extractLoras(raw.neg);
     const p = { ...raw, pos: pos.text, neg: neg.text, loras: raw.loras?.length ? raw.loras : pos.loras };
     if (raw.source !== 'yomu') p.mode = 'txt2img';
     showLocalImage(file, p);
     const missing = applyParams(await resolveModelHash(p));
     const srcName = { yomu: 'Yomu', stability_matrix: 'Stability Matrix', comfyui: 'ComfyUI', a1111: 'A1111' }[raw.source] || raw.source;
-    toast(`已載入參數（來源：${srcName}）`);
+    toast(`已載入參數（來源：${srcName}），切到「${document.querySelector(`#modeTabs .tab[data-mode="${state.mode}"]`)?.textContent || state.mode}」`);
     showMissing(missing);
   }
   /** 圖用到的模型這台電腦沒有 → 列出來，每個都可以直接到 Civitai 搜 */
@@ -1379,7 +1393,8 @@
     $('metaBar').textContent = `${it.filename} · 讀取參數中…`;
     try {
       const chunks = await fetch(`/yomu/api/pnginfo?filename=${encodeURIComponent(it.filename)}&subfolder=${encodeURIComponent(it.subfolder)}`).then(r => r.json());
-      const raw = PngInfo.parseParams(chunks);
+      let raw = PngInfo.parseParams(chunks);
+      if (isVideoFile(it.filename) && raw?.source !== 'yomu') raw = null;
       if (!raw) { $('metaBar').textContent = `${it.filename} · 沒有可讀的參數`; return; }
       const pos = PngInfo.extractLoras(raw.pos), neg = PngInfo.extractLoras(raw.neg);
       const p = { ...raw, pos: pos.text, neg: neg.text, loras: raw.loras?.length ? raw.loras : pos.loras };
@@ -1583,16 +1598,13 @@
       const f = e.dataTransfer.files[0];
       if (!key && !f) return;
       if (document.querySelector('.modal:not([hidden])')) return;
-      const usesSource = ['img2img', 'inpaint', 'img2video'].includes(state.mode);
       if (key) {
         const item = GV.items.find(it => it && `${it.subfolder}/${it.filename}` === key);
         if (!item) return;
-        if (usesSource && /\.(png|jpe?g|webp)$/i.test(item.filename)) { sourceFromOutput(item); toast('已當作來源圖'); }
-        else if (usesSource && isVideoFile(item.filename)) sourceFromOutput(item);
-        else gvSelect(item, null, true);
+        gvSelect(item, null, true);
         return;
       }
-      if (usesSource && f.type.startsWith('image/')) uploadFile(f, { keepMode: true }); else loadParamsFromFile(f);
+      loadParamsFromFile(f);
     });
     $('btnCloseMissing').onclick = () => { $('missingModal').hidden = true; };
     closeOnBackdrop($('missingModal'), () => { $('missingModal').hidden = true; });
