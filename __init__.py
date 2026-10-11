@@ -85,8 +85,9 @@ def _load_tags():
                     aliases = row[3].split(",") if len(row) > 3 and row[3] else []
                     rows.append((row[0], cat, count, [a for a in aliases if a]))
         rows.sort(key=lambda r: -r[2])
-        _tags = rows
-        return _tags
+        if rows:      # 檔案不存在時不要把「空」記起來，補上檔案後就能用
+            _tags = rows
+        return rows
 
 
 @routes.get("/yomu/api/embeddings")

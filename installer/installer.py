@@ -2,7 +2,7 @@
 Yomu 安裝程式 —— 在 http://127.0.0.1:8190 開一個小網頁，幫沒有 ComfyUI 的人下載並裝好 ComfyUI + Yomu。
 
 只用 Python 標準庫。流程：git clone ComfyUI → 建 venv → 裝 PyTorch → 裝 ComfyUI 相依 →
-git clone Yomu 與補幀節點 → 桌面捷徑。模型不在這裡下載，進 Yomu 後從缺模型視窗 / Civitai 瀏覽器裝。
+git clone Yomu 與補幀、標籤資料節點 → 桌面捷徑。模型不在這裡下載，進 Yomu 後從缺模型視窗 / Civitai 瀏覽器裝。
 """
 import json
 import os
@@ -20,7 +20,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", 8190
 YOMU_REPO = "https://github.com/piowyu-hina/ComfyUI-Yomu.git"
 COMFY_REPO = "https://github.com/comfyanonymous/ComfyUI.git"
-NODE_REPOS = ["https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git"]   # 影片補幀（圖生影片的 RIFE 用）
+NODE_REPOS = [
+    "https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git",    # 影片補幀（圖生影片的 RIFE 用）
+    "https://github.com/michikora/ComfyUI-Autocomplete-Plus-Plus.git",   # Danbooru 標籤資料（Yomu 提示詞補完讀它的 tags/danbooru.csv）
+]
 NO_WINDOW = 0x08000000
 MIN_FREE_GB = 12
 
@@ -209,7 +212,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 pre{background:#0a0c12;border:1px solid var(--line);border-radius:9px;padding:12px;font:12px/1.45 Consolas,monospace;height:260px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:#c9d1d9}
 </style></head><body><div class="card">
 <h1>Yomu 安裝程式</h1>
-<div class="muted">會下載 ComfyUI、建立獨立的 Python 環境、裝好 Yomu（含圖生影片需要的補幀節點）。模型不在這裡下載（約需 12 GB 空間，不含模型）。</div>
+<div class="muted">會下載 ComfyUI、建立獨立的 Python 環境、裝好 Yomu（含補幀節點與標籤資料）。模型不在這裡下載（約需 12 GB 空間，不含模型）。</div>
 <label class="f">安裝位置<input type="text" id="dest"></label>
 <label class="f">顯卡 / PyTorch 版本<select id="cuda"></select><span class="muted" id="gpu"></span></label>
 <label class="f">Yomu 的 GitHub 網址<input type="text" id="repo"></label>
