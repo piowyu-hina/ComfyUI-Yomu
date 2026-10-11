@@ -1221,7 +1221,13 @@
       return html;
     }).join('\n') + '​';
   }
-  function syncHl(id) { const ta = $(id), pre = $(id + 'Hl'); if (!pre) return; pre.innerHTML = highlight(ta.value); pre.scrollTop = ta.scrollTop; }
+  function syncHl(id) {
+    const ta = $(id), pre = $(id + 'Hl'); if (!pre) return;
+    pre.innerHTML = highlight(ta.value);
+    // 在最後面打字／換行：瀏覽器只會捲到游標那一行，底部留白會被切掉一截，所以直接捲到底
+    if (document.activeElement === ta && ta.selectionStart === ta.value.length) ta.scrollTop = ta.scrollHeight;
+    pre.scrollTop = ta.scrollTop;
+  }
   function hlAll() { syncHl('pos'); syncHl('neg'); }
   function setupHighlight() {
     for (const id of ['pos', 'neg']) {

@@ -228,6 +228,7 @@ def _download_job(job):
 
 SEARCH_PAGES = 5      # 一次搜尋最多往下翻幾頁來湊滿結果
 SEARCH_TTL = 60       # 秒
+SEARCH_MAX = 200      # 合併後最多回幾筆
 _search_cache = {}    # 搜尋條件 -> (時間, Civitai 回的資料)
 
 
@@ -301,14 +302,17 @@ def register(routes):
             params["period"] = q["period"]
         params["nsfw"] = "true" if q.get("nsfw") == "1" else "false"
         cursor = q.get("cursor")
-        # Civitai 的關鍵字會被當成詞幹比對（arknight 只找得到 arknights），名字寫單數的要加底線（arknight_）才出得來；
-        # 兩種寫法同時搜、合併。只在第一頁做，「載入更多」沿用原詞的游標。
-        variants = [query]
+        # 只靠名字搜會漏很多：Civitai 把 arknight 當詞幹比對（找不到名字寫單數的，要加底線才找得到），
+        # 而且名字沒寫關鍵字、只掛標籤的（例如只叫角色名的 LoRA）也不會出來。
+        # 所以第一頁同時搜：原詞、加底線的詞、單複數兩種標籤，合併後照排序排好；「載入更多」沿用原詞的游標。
+        jobs = [(dict(params), cursor, SEARCH_PAGES)]
         if query and not cursor:
-            variants.append(query[:-1] if query.endswith("_") else query + "_")
-        results = await asyncio.gather(
-            *[collect(dict(params, **({"query": v} if v else {})), cursor, SEARCH_PAGES if i == 0 else 1, limit) for i, v in enumerate(variants)],
-            return_exceptions=True)
+            no_query = {k: v for k, v in params.items() if k != "query"}
+            jobs.append((dict(params, query=query[:-1] if query.endswith("_") else query + "_"), None, 1))
+            tag = query.lower().replace("_", " ").strip()
+            for t in dict.fromkeys([tag, tag[:-1] if tag.endswith("s") else tag + "s"]):
+                jobs.append((dict(no_query, tag=t), None, 1))
+        results = await asyncio.gather(*[collect(*job, limit) for job in jobs], return_exceptions=True)
         if isinstance(results[0], Exception):
             return web.json_response({"ok": False, "msg": f"連線失敗：{results[0]}"}, status=502)
         merged, seen = [], set()
@@ -321,9 +325,9 @@ def register(routes):
                     merged.append(slim_model(m))
         key = {"Most Downloaded": lambda m: m["downloads"] or 0, "Highest Rated": lambda m: m["likes"] or 0,
                "Newest": lambda m: (m["versions"][0]["publishedAt"] or "") if m["versions"] else ""}.get(q.get("sort"))
-        if key and len(variants) > 1:
+        if key and len(jobs) > 1:
             merged.sort(key=key, reverse=True)
-        return web.json_response({"ok": True, "items": merged, "nextCursor": results[0][1]})
+        return web.json_response({"ok": True, "items": merged[:SEARCH_MAX], "nextCursor": results[0][1]})
 
     @routes.get("/yomu/api/civitai/model")
     async def model_detail(request):
