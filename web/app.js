@@ -1301,11 +1301,12 @@
   function setupAutocomplete(taId, popupId) {
     const ta = $(taId), popup = $(popupId), wrap = ta.closest('.ac-wrap');
     let matches = [], sel = 0, timer = null, wordStart = 0, pending = '', applyOnLoad = false;
+    let picking = false;   // 按 ↓ 進到清單裡才算在選；沒進清單時 Enter 是換行、↑ 是往上一行，只有 Tab 補完
     // 鏡像層：跟 textarea 同字體同排版，用來量「正在打的字」在哪個位置
     const mirror = document.createElement('pre');
     mirror.className = 'hl ac-mirror'; mirror.setAttribute('aria-hidden', 'true');
     ta.parentElement.appendChild(mirror);
-    const close = () => { popup.hidden = true; matches = []; pending = ''; applyOnLoad = false; };
+    const close = () => { popup.hidden = true; matches = []; pending = ''; applyOnLoad = false; picking = false; };
     /** 把清單放到游標那個字的正下方；下面塞不下就放上方 */
     const positionPopup = () => {
       mirror.innerHTML = escHtml(ta.value.slice(0, wordStart)) + '<span class="cm">\u200b</span>';
@@ -1331,7 +1332,7 @@
       popup.innerHTML = '';
       matches.forEach((m, i) => {
         const row = document.createElement('div');
-        row.className = 'ac-item' + (i === sel ? ' sel' : '');
+        row.className = 'ac-item' + (picking && i === sel ? ' sel' : '');
         const left = document.createElement('span'); left.className = 'cat-' + m.cat; left.textContent = m.tag.replace(/_/g, ' ');
         if (m.alias) { const a = document.createElement('span'); a.className = 'alias'; a.textContent = `← ${m.alias}`; left.appendChild(a); }
         const cnt = document.createElement('span'); cnt.className = 'cnt' + (m.emb ? ' emb' : '');
@@ -1373,7 +1374,7 @@
       try { tags = await fetch('/yomu/api/tags?q=' + encodeURIComponent(q) + '&limit=12').then(r => r.json()); } catch {}
       if (pending !== q) return;                 // 已經又打了別的字
       matches = [...embs, ...tags].slice(0, 14);
-      sel = 0; render();
+      sel = 0; picking = false; render();
       if (applyOnLoad && matches.length) { applyOnLoad = false; apply(matches[0].tag, matches[0].emb); }
       applyOnLoad = false;
     }
@@ -1385,11 +1386,12 @@
         return;
       }
       if (popup.hidden) return;
-      if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % matches.length; render(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + matches.length) % matches.length; render(); }
-      else if (e.key === 'Tab' || (e.key === 'Enter' && !e.ctrlKey)) { e.preventDefault(); apply(matches[sel].tag, matches[sel].emb); }
-      else if (e.key === 'Escape') close();
+      if (e.key === 'ArrowDown') { e.preventDefault(); sel = picking ? (sel + 1) % matches.length : 0; picking = true; render(); }
+      else if (e.key === 'ArrowUp' && picking) { e.preventDefault(); sel = (sel - 1 + matches.length) % matches.length; render(); }
+      else if (e.key === 'Tab' || (e.key === 'Enter' && picking && !e.ctrlKey)) { e.preventDefault(); apply(matches[sel].tag, matches[sel].emb); }
+      else if (['Escape', 'Enter', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) close();   // 照原本的意思換行 / 移游標，清單收起來
     });
+    ta.addEventListener('mousedown', close);
     ta.addEventListener('blur', () => setTimeout(close, 120));
     ta.addEventListener('scroll', () => { if (!popup.hidden) positionPopup(); });
   }
