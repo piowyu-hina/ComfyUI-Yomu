@@ -16,7 +16,6 @@ workflows/         工作流範本（ComfyUI API 格式）
   txt2img.json     文生圖
   img2img.json     圖生圖
 js/launcher.js     在 ComfyUI 主介面選單加入口
-tools/open_browser.py  啟動後自動開 App（start_service.bat 用）
 ```
 
 ## 背後的工作流怎麼換
@@ -43,12 +42,10 @@ tools/open_browser.py  啟動後自動開 App（start_service.bat 用）
 
 ## 啟動 / 停止 ComfyUI
 
-`launcher/launcher.py` 是常駐的小啟動器（http://127.0.0.1:8189），一個按鈕切換啟動／停止，
-有即時 log、「更新 Yomu」「更新 ComfyUI」按鈕；ComfyUI 起來後會自動開 Yomu。有裝 Electron 就用 Electron 視窗，沒有就用 Edge / Chrome 的 App 視窗。
+`launcher/launcher.py` 是小啟動器（http://127.0.0.1:8189），一個按鈕切換啟動／停止，關掉視窗後啟動器自己結束（ComfyUI 繼續跑），
+有即時 log；開啟時會檢查更新，有新版才出現綠色的「更新 ComfyUI」「更新 Yomu」按鈕；ComfyUI 起來後會自動開 Yomu。有裝 Electron 就用 Electron 視窗，沒有就用 Edge / Chrome 的 App 視窗。
 
 - `launcher/launch.vbs`：桌面捷徑用，開啟啟動器視窗
-- `launcher/start_launcher.vbs`：放進「開機自動執行」用，只常駐啟動器、不開視窗
-- `launcher/start_service.bat`：備用，直接在黑視窗跑 ComfyUI（不經啟動器）
 
 ## Hires Fix 與圖片參數
 
