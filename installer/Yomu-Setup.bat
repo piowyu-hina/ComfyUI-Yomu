@@ -9,7 +9,7 @@ for %%C in ("py -3.12" "py -3" "python") do (
   )
 )
 if not defined PY (
-  echo 找不到 Python，用 winget 安裝 Python 3.12 ...
+  echo Python not found, installing Python 3.12 with winget ...
   winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements
   set "PY=%LocalAppData%\Programs\Python\Python312\python.exe"
 )

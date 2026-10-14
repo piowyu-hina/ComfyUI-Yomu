@@ -1,0 +1,4 @@
+# Windows scripts: keep CRLF byte-for-byte (cmd misparses LF batch files and closes instantly)
+*.bat -text
+*.cmd -text
+*.vbs -text
