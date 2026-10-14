@@ -1336,7 +1336,7 @@
   function setupAutocomplete(taId, popupId) {
     const ta = $(taId), popup = $(popupId), wrap = ta.closest('.ac-wrap');
     let matches = [], sel = 0, timer = null, wordStart = 0, pending = '', applyOnLoad = false;
-    let picking = false;   // 按 ↓ 進到清單裡才算在選；沒進清單時 Enter 是換行、↑ 是往上一行，只有 Tab 補完
+    let picking = false;   // 清單開著時 ↑ ↓ 都是選詞；用 ↑ ↓ 選過才算在選，沒選過的 Enter 是換行，Tab 永遠補完
     // 鏡像層：跟 textarea 同字體同排版，用來量「正在打的字」在哪個位置
     const mirror = document.createElement('pre');
     mirror.className = 'hl ac-mirror'; mirror.setAttribute('aria-hidden', 'true');
@@ -1422,9 +1422,9 @@
       }
       if (popup.hidden) return;
       if (e.key === 'ArrowDown') { e.preventDefault(); sel = picking ? (sel + 1) % matches.length : 0; picking = true; render(); }
-      else if (e.key === 'ArrowUp' && picking) { e.preventDefault(); sel = (sel - 1 + matches.length) % matches.length; render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); sel = picking ? (sel - 1 + matches.length) % matches.length : matches.length - 1; picking = true; render(); }
       else if (e.key === 'Tab' || (e.key === 'Enter' && picking && !e.ctrlKey)) { e.preventDefault(); apply(matches[sel].tag, matches[sel].emb); }
-      else if (['Escape', 'Enter', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) close();   // 照原本的意思換行 / 移游標，清單收起來
+      else if (['Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) close();   // 照原本的意思換行 / 移游標，清單收起來
     });
     ta.addEventListener('mousedown', close);
     ta.addEventListener('blur', () => setTimeout(close, 120));
