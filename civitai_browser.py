@@ -21,6 +21,9 @@ from aiohttp import web
 
 import folder_paths
 
+from . import _load_tags
+from .characters import search as search_characters
+
 SETTINGS_PATH = os.path.join(folder_paths.get_user_directory(), "yomu_settings.json")
 API = "https://civitai.com/api/v1"
 UA = "Yomu/1.0 (ComfyUI custom node)"
@@ -102,18 +105,19 @@ def installed_version_ids():
     return ids
 
 
-def _imgs(images, limit=16):
-    imgs = [i for i in images or [] if isinstance(i, dict) and i.get("url") and i.get("type", "image") == "image"]
+def _imgs(images, limit=16, sfw=False):
+    imgs = [i for i in images or [] if isinstance(i, dict) and i.get("url") and i.get("type", "image") == "image"
+            and not (sfw and (i.get("nsfwLevel") or 0) > 2)]      # 沒開 NSFW：只留 PG / PG-13 的圖
     imgs.sort(key=lambda i: (i.get("nsfwLevel") or 0))
     return [re.sub(r"/width=\d+/", "/width=450/", i["url"]) for i in imgs[:limit]]
 
 
-def _img(images):
-    lst = _imgs(images, 1)
+def _img(images, sfw=False):
+    lst = _imgs(images, 1, sfw)
     return lst[0] if lst else None
 
 
-def slim_model(m):
+def slim_model(m, sfw=False):
     installed = installed_version_ids()
     versions = []
     for v in m.get("modelVersions") or []:
@@ -129,7 +133,7 @@ def slim_model(m):
         versions.append({
             "id": v.get("id"), "name": v.get("name"), "baseModel": v.get("baseModel"),
             "trainedWords": v.get("trainedWords") or [], "publishedAt": v.get("publishedAt"),
-            "image": _img(v.get("images")), "images": _imgs(v.get("images")), "files": files,
+            "image": _img(v.get("images"), sfw), "images": _imgs(v.get("images"), sfw=sfw), "files": files,
             "installed": v.get("id") in installed,
             "description": (v.get("description") or "")[:2000],
         })
@@ -229,6 +233,28 @@ def _download_job(job):
 SEARCH_PAGES = 5      # 一次搜尋最多往下翻幾頁來湊滿結果
 SEARCH_TTL = 60       # 秒
 SEARCH_MAX = 200      # 合併後最多回幾筆
+RELATED_MAX = 2       # 搜尋詞另外帶幾個相關的作品 / 角色名
+
+
+def related_terms(query):
+    """跟搜尋詞相關的熱門作品 / 角色名：ark → arknights，miku → hatsune miku；中文從角色資料包找（心 → hsin）"""
+    q = query.strip().lower()
+    if len(q) < 2 or (len(q) < 3 and q.isascii()):
+        return []
+    if not q.isascii():
+        tags = [c[0] for c in search_characters(q, RELATED_MAX * 3)]
+    else:
+        q = q.replace(" ", "_")
+        tags = [tag for tag, cat, count, aliases in _load_tags()
+                if cat in (3, 4) and tag != q and (tag.startswith(q) or any(w.startswith(q) for w in re.split(r"[_:]+", tag)))]
+    terms = []
+    for tag in tags:
+        term = re.sub(r"[ _]\(.*\)$", "", tag).replace("_", " ")     # 拿掉「(作品)」限定詞，Civitai 的名字和標籤很少這樣寫
+        if term != query.strip().lower() and term not in terms:
+            terms.append(term)
+        if len(terms) >= RELATED_MAX:
+            break
+    return terms
 _search_cache = {}    # 搜尋條件 -> (時間, Civitai 回的資料)
 
 
@@ -300,18 +326,25 @@ def register(routes):
             params["sort"] = q["sort"]
         if q.get("period"):
             params["period"] = q["period"]
-        params["nsfw"] = "true" if q.get("nsfw") == "1" else "false"
+        # Civitai 的 nsfw=false 是看預覽圖分級，會把有一張 R 級預覽圖的一般模型也藏起來；一律全拿，再依模型本身的標記過濾
+        params["nsfw"] = "true"
+        sfw = q.get("nsfw") != "1"
         cursor = q.get("cursor")
         # 只靠名字搜會漏很多：Civitai 把 arknight 當詞幹比對（找不到名字寫單數的，要加底線才找得到），
         # 而且名字沒寫關鍵字、只掛標籤的（例如只叫角色名的 LoRA）也不會出來。
-        # 所以第一頁同時搜：原詞、加底線的詞、單複數兩種標籤，合併後照排序排好；「載入更多」沿用原詞的游標。
+        # 所以第一頁同時搜：原詞、加底線的詞、單複數兩種標籤、相關的作品 / 角色名（名字和標籤都搜），
+        # 合併後照排序排好；「載入更多」沿用原詞的游標。
         jobs = [(dict(params), cursor, SEARCH_PAGES)]
+        related = related_terms(query) if query and not cursor else []
         if query and not cursor:
             no_query = {k: v for k, v in params.items() if k != "query"}
             jobs.append((dict(params, query=query[:-1] if query.endswith("_") else query + "_"), None, 1))
             tag = query.lower().replace("_", " ").strip()
             for t in dict.fromkeys([tag, tag[:-1] if tag.endswith("s") else tag + "s"]):
                 jobs.append((dict(no_query, tag=t), None, 1))
+            for term in related:
+                jobs.append((dict(params, query=term), None, 1))
+                jobs.append((dict(no_query, tag=term), None, 1))
         results = await asyncio.gather(*[collect(*job, limit) for job in jobs], return_exceptions=True)
         if isinstance(results[0], Exception):
             return web.json_response({"ok": False, "msg": f"連線失敗：{results[0]}"}, status=502)
@@ -320,14 +353,14 @@ def register(routes):
             if isinstance(res, Exception):
                 continue
             for m in res[0]:
-                if m["id"] not in seen:
+                if m["id"] not in seen and not (sfw and m.get("nsfw")):
                     seen.add(m["id"])
-                    merged.append(slim_model(m))
+                    merged.append(slim_model(m, sfw))
         key = {"Most Downloaded": lambda m: m["downloads"] or 0, "Highest Rated": lambda m: m["likes"] or 0,
                "Newest": lambda m: (m["versions"][0]["publishedAt"] or "") if m["versions"] else ""}.get(q.get("sort"))
         if key and len(jobs) > 1:
             merged.sort(key=key, reverse=True)
-        return web.json_response({"ok": True, "items": merged[:SEARCH_MAX], "nextCursor": results[0][1]})
+        return web.json_response({"ok": True, "items": merged[:SEARCH_MAX], "nextCursor": results[0][1], "related": related})
 
     @routes.get("/yomu/api/civitai/model")
     async def model_detail(request):
@@ -337,7 +370,7 @@ def register(routes):
             r = await _to_thread(requests.get, f"{API}/models/{int(mid)}", headers=_headers(), timeout=30)
             if r.status_code != 200:
                 return web.json_response({"ok": False, "msg": f"Civitai 回應 {r.status_code}"}, status=502)
-            return web.json_response({"ok": True, "model": slim_model(r.json())})
+            return web.json_response({"ok": True, "model": slim_model(r.json(), request.query.get("nsfw") != "1")})
         except Exception as e:
             return web.json_response({"ok": False, "msg": str(e)}, status=502)
 

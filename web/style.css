@@ -447,6 +447,21 @@ button:disabled { opacity: .55; cursor: wait; }
 .lora-row .tw:disabled { opacity: .3; cursor: default; }
 .asset-card .asset-badge { position: absolute; left: 6px; top: 6px; padding: 1px 6px; border-radius: 4px; background: rgba(0, 0, 0, .65); font-size: 10px; color: #ddd; }
 
+/* ---------- 角色卡 ---------- */
+#charSetup { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.char-update { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--ok); border-radius: 6px; font-size: 12px; color: var(--ok); }
+.char-update .mini { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+.char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; max-height: 420px; overflow-y: auto; margin-top: 8px; }
+.char-card { position: relative; display: flex; flex-direction: column; padding: 0; background: var(--input); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; cursor: pointer; text-align: left; }
+.char-card:hover { border-color: var(--line-2); }
+.char-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.char-card.selected::after { content: '✓'; position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 11px; }
+.char-card img { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--card); }
+.char-name, .char-series { padding: 0 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.char-name { padding-top: 4px; font-size: 11.5px; }
+.char-series { padding-bottom: 4px; min-height: 18px; font-size: 10.5px; color: var(--muted); }
+.char-empty { grid-column: 1 / -1; padding: 16px; text-align: center; color: var(--muted); font-size: 12px; }
+
 /* ---------- 更新視窗 / Civitai ---------- */
 .missing-box { width: min(820px, 100%); height: min(520px, 100%); }
 #civitaiState:empty { display: none; }

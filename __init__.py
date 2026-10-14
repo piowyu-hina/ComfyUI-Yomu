@@ -9,6 +9,7 @@ Yomu：簡單的文生圖 / 圖生圖介面，背後跑的是 workflows/ 內的 
   GET /yomu/api/workflow/{name}  取得單一範本 JSON
   GET /yomu/api/tags?q=&limit=   Danbooru 標籤自動補完
   GET /yomu/api/gallery|thumb|pnginfo   圖庫（見 gallery.py）
+  GET /yomu/api/characters*      角色卡（見 characters.py）
 """
 import asyncio
 import csv
@@ -299,6 +300,8 @@ from .civitai import register as _register_civitai
 _register_civitai(routes)
 from .civitai_browser import register as _register_civitai_browser
 _register_civitai_browser(routes)
+from .characters import register as _register_characters
+_register_characters(routes)
 
 NODE_CLASS_MAPPINGS = {}
 

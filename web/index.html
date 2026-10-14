@@ -107,6 +107,23 @@
         </div>
       </section>
 
+      <!-- 角色卡 -->
+      <section class="card">
+        <header class="card-head"><span class="card-title">角色</span><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div id="charSetup" hidden>
+            <div class="muted small">5,000 多個動漫角色的中文名、標籤與縮圖（約 125 MB，從 Hugging Face 下載）。點角色卡就把標籤加進正面提示詞。</div>
+            <button class="mini" id="btnCharDownload">⬇ 下載角色資料包</button>
+          </div>
+          <div class="char-update" id="charUpdate" hidden><span id="charUpdateText"></span><button class="mini" id="btnCharUpdate">⬇ 更新</button></div>
+          <div class="muted small" id="charDlState"></div>
+          <div id="charBrowser" hidden>
+            <input type="text" id="charSearch" placeholder="搜尋角色或作品（中文 / 英文）">
+            <div class="char-grid" id="charGrid"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- Sampler -->
       <section class="card">
         <header class="card-head"><span class="card-title">取樣</span><button class="chev" data-collapse>▾</button></header>
@@ -435,6 +452,7 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
 <script src="/yomu/static/pnginfo.js"></script>
 <script src="/yomu/static/app.js"></script>
 <script src="/yomu/static/civitai.js"></script>
+<script src="/yomu/static/characters.js"></script>
 <script src="/yomu/static/inpaint.js"></script>
 </body>
 </html>

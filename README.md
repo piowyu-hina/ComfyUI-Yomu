@@ -58,6 +58,17 @@ js/launcher.js     在 ComfyUI 主介面選單加入口
 - 生成的 PNG 會多一個 `yomu` 文字區塊，把 PNG 拖到畫面任何位置就能還原全部設定；用到的模型這台沒有時，會跳出視窗列出來並可直接到 Civitai 搜尋。
   也能讀 Stability Matrix、A1111、一般 ComfyUI 的圖；提示詞裡的 `<lora:名:權重>` 會自動轉成 LoRA 列。
 
+## 角色卡
+
+左欄「角色」卡片：第一次按「下載角色資料包」，從 Hugging Face 下載 [WAI 角色資料包](https://huggingface.co/datasets/flagrantia/character_select_stand_alone_app)（MIT，5000 多個角色的中文名、標籤、縮圖，約 125 MB）到 `cache/characters/`。
+可以用中文（簡繁都行）、英文或作品名搜尋；點卡片把角色標籤加進正面提示詞，再點一次拿掉。中文名用 `characters_s2t.json` 轉成繁體。
+打開 Yomu 時會問一次 Hugging Face 有沒有新版本的資料包（作者配合新版 WAI 模型會出 v120、v160…），有的話卡片上會出現「更新」，按了才下載。
+
+## Civitai 搜尋
+
+除了原詞，還會一起搜相關的熱門作品 / 角色名（`ark` → arknights，`miku` → hatsune miku；中文從角色資料包對到英文名），狀態列會列出「也搜尋了」哪些。
+沒勾 NSFW 時依模型本身的標記過濾，預覽圖只顯示 PG / PG-13 的；不會因為有一張 R 級預覽圖就把整個模型藏起來。
+
 ## 圖庫
 
 右上角「圖庫」會列出 `output/` 裡全部的圖（伺服器掃描、分頁、虛擬捲動）。

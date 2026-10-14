@@ -9,7 +9,8 @@
 
   const BASE_BY_FAMILY = { sdxl: ['Illustrious', 'Pony', 'NoobAI', 'SDXL 1.0'], sd15: ['SD 1.5'], anima: ['Anima'], flux: ['Flux.1 D', 'Flux.2 D'], wan: ['Wan Video 2.2 I2V-A14B', 'Wan Video 14B i2v 720p'], qwen: ['Qwen'] };
 
-  const S = { items: [], cursor: null, loading: false, q: '', detail: null, pollTimer: null, seq: 0 };
+  const S = { items: [], cursor: null, loading: false, q: '', detail: null, pollTimer: null, seq: 0, related: [] };
+  const nsfwParam = () => '&nsfw=' + ($('cvNsfw').checked ? 1 : 0);
 
   function filters() {
     const fams = HY().compatFamilies();
@@ -23,7 +24,7 @@
   async function openByLink(text) {
     const m = text.match(/civitai\.com\/models\/(\d+)(?:[^\s]*?[?&]modelVersionId=(\d+))?/i) || text.match(/^(\d{3,})$/);
     if (!m) return false;
-    const r = await fetch('/yomu/api/civitai/model?id=' + m[1]).then(r => r.json()).catch(() => null);
+    const r = await fetch('/yomu/api/civitai/model?id=' + m[1] + nsfwParam()).then(r => r.json()).catch(() => null);
     if (!r?.ok) return false;
     S.items = [r.model]; $('cvGrid').innerHTML = ''; renderCard(r.model); S.cursor = null; $('cvMore').hidden = true;
     $('cvStatus').textContent = '依連結找到：' + r.model.name;
@@ -48,8 +49,9 @@
       if (!r.ok) throw new Error(r.msg);
       const fresh = r.items.filter(m => !S.items.some(x => x.id === m.id));   // 合併原詞與加底線的結果後，「載入更多」可能有重複
       S.items.push(...fresh); S.cursor = r.nextCursor || null;
+      if (!more) S.related = r.related || [];
       fresh.forEach(renderCard);
-      $('cvStatus').textContent = S.items.length ? `${S.items.length} 個結果${S.cursor ? '' : '（到底了）'}` : '沒有結果';
+      $('cvStatus').textContent = (S.items.length ? `${S.items.length} 個結果${S.cursor ? '' : '（到底了）'}` : '沒有結果') + (S.related.length ? ` · 也搜尋了：${S.related.join('、')}` : '');
       $('cvMore').hidden = !S.cursor;
     } catch (e) { if (e.name !== 'AbortError' && seq === S.seq) $('cvStatus').textContent = '搜尋失敗：' + e.message; }
     finally { if (seq === S.seq) { S.loading = false; $('cvMore').disabled = false; } }
@@ -95,7 +97,7 @@
     $('cvVersion').value = String(start);
     renderVersion(m, m.versions[start]);
     // 補抓完整版本清單（列表 API 可能只給一部分）
-    fetch('/yomu/api/civitai/model?id=' + m.id).then(r => r.json()).then(r => {
+    fetch('/yomu/api/civitai/model?id=' + m.id + nsfwParam()).then(r => r.json()).then(r => {
       if (!r.ok || S.detail !== m || r.model.versions.length <= m.versions.length) return;
       const cur = m.versions[$('cvVersion').value]?.id;
       m.versions = r.model.versions; m.installed = r.model.installed;
