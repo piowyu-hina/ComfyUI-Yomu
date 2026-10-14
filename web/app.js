@@ -1665,10 +1665,14 @@
     };
     $('btnShowFolder').onclick = async () => {
       if (!menuImage && !state.current) return;
-      if (!window.yomuDesktop) { toast('請在 Yomu App 中開啟所在資料夾', true); return; }
       const image = menuImage || state.current.item.images[state.current.idx];
       try {
-        await window.yomuDesktop.revealImage(new URL(image.url, location.href).href);
+        if (window.yomuDesktop) await window.yomuDesktop.revealImage(new URL(image.url, location.href).href);
+        else {   // 沒裝 Electron（Edge App 視窗）：請 ComfyUI 那邊開檔案總管
+          const u = new URL(image.url, location.href);
+          const r = await fetch('/yomu/api/image-reveal?' + new URLSearchParams({ filename: u.searchParams.get('filename') || image.filename, subfolder: u.searchParams.get('subfolder') || image.subfolder || '' }), { method: 'POST' }).then(r => r.json());
+          if (!r.ok) throw new Error(r.msg);
+        }
       } catch (e) { toast('無法開啟資料夾：' + e.message, true); }
     };
     $('btnGenerate').onclick = generate;

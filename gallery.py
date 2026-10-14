@@ -232,6 +232,17 @@ def register(routes):
         get_items(True)
         return web.json_response({"ok": True})
 
+    @routes.post("/yomu/api/image-reveal")
+    async def image_reveal(request):
+        """在檔案總管打開圖片所在的資料夾並選起來（沒裝 Electron、用 Edge App 視窗開 Yomu 的人用這個）"""
+        q = request.query
+        full = _safe_path(q.get("filename", ""), q.get("subfolder", ""))
+        if not full or not os.path.isfile(full):
+            return web.json_response({"ok": False, "msg": "找不到檔案"}, status=404)
+        import subprocess
+        subprocess.Popen(f'explorer /select,"{full}"')
+        return web.json_response({"ok": True})
+
     @routes.get("/yomu/api/pnginfo")
     async def pnginfo(request):
         q = request.query
