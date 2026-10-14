@@ -1297,6 +1297,33 @@
     hlAll();
   }
 
+  /** Ctrl+← / → 照 VS Code 跳字：行首往前跳到上一行行尾、行尾往後跳到下一行（瀏覽器的 textarea 不會跨行）；Shift 一起選取 */
+  function setupWordJump() {
+    const isWord = (c) => /[\p{L}\p{N}_]/u.test(c);
+    const isSpace = (c) => c === ' ' || c === '\t';
+    const jump = (v, i, dir) => {
+      const at = (k) => v[dir < 0 ? k - 1 : k];
+      const inside = (k) => (dir < 0 ? k > 0 : k < v.length);
+      if (inside(i) && at(i) === '\n') return i + dir;
+      while (inside(i) && isSpace(at(i))) i += dir;
+      const kind = inside(i) && isWord(at(i));
+      while (inside(i) && at(i) !== '\n' && !isSpace(at(i)) && isWord(at(i)) === kind) i += dir;
+      return i;
+    };
+    for (const id of ['pos', 'neg']) {
+      $(id).addEventListener('keydown', (e) => {
+        if (!e.ctrlKey || e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+        e.preventDefault();
+        const ta = e.target, dir = e.key === 'ArrowLeft' ? -1 : 1;
+        const back = ta.selectionDirection === 'backward';
+        const focus = back ? ta.selectionStart : ta.selectionEnd, anchor = back ? ta.selectionEnd : ta.selectionStart;
+        const to = jump(ta.value, focus, dir);
+        if (!e.shiftKey) ta.setSelectionRange(to, to);
+        else ta.setSelectionRange(Math.min(anchor, to), Math.max(anchor, to), to < anchor ? 'backward' : 'forward');
+      });
+    }
+  }
+
   // ================================================================ 自動補完
   function setupAutocomplete(taId, popupId) {
     const ta = $(taId), popup = $(popupId), wrap = ta.closest('.ac-wrap');
@@ -1757,6 +1784,7 @@
     setupLayout();
     setupAddons();
     setupHighlight();
+    setupWordJump();
     setupAutocomplete('pos', 'acPopup');
     setupAutocomplete('neg', 'acPopupNeg');
     setupAssets();
