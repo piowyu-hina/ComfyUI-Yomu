@@ -58,6 +58,15 @@
     else if (start > e0 || end < s0) ta.setSelectionRange(s0, e0);   // 改的地方不含原游標就把游標放回去
   }
   function setText(ta, text) { if (ta.value === text) return; replaceRange(ta, 0, ta.value.length, text); }
+  /** 提示詞裡完整的一段（前後是逗號、換行或頭尾）：有沒有、拿掉、插到游標位置 — 角色卡、姿勢卡、隨機標籤共用 */
+  const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const partRe = (text) => new RegExp(`(^|[,\\n])[ \\t]*${reEsc(text)}[ \\t]*(?=,|\\n|$),?[ \\t]*`);
+  const hasPart = (ta, text) => partRe(text).test(ta.value);
+  const removePart = (ta, text) => setText(ta, ta.value.replace(partRe(text), (m, sep) => (sep === ',' ? ', ' : sep)));
+  function insertPart(ta, text) {
+    const start = ta.selectionStart, before = ta.value.slice(0, start);
+    replaceRange(ta, start, ta.selectionEnd, (before && !/[,\n]\s*$/.test(before) ? ', ' : '') + text + ', ');
+  }
   /** 點背景關閉：要 pointerdown 和 click 都落在背景才算，拖選文字拖到外面放開不會誤關 */
   const closeOnBackdrop = (el, fn) => { let down = false; el.addEventListener('pointerdown', (e) => { down = e.target === el; }); el.addEventListener('click', (e) => { if (down && e.target === el) fn(); down = false; }); };
   const setProgress = (pct) => ($('progressFill').style.width = Math.max(0, Math.min(100, pct)) + '%');
@@ -467,8 +476,15 @@
     try {
       const params = collectParams({ rollSeed: true });
       if (!params.ckpt) throw new Error('請先選擇 Checkpoint');
-      const picked = addonOn('char') ? await HYCharacters.pickRandom() : null;   // 隨機角色：只加在這次送出的提示詞，不動欄位
-      if (picked) { params.pos = picked.text + ', ' + params.pos; params.character = picked.name; }
+      // {隨機角色} / {隨機姿勢}：欄位裡留著標籤，送出（和存進圖片）的提示詞換成這次抽到的
+      const picks = [];
+      for (const [token, pick, none] of [['{隨機角色}', HYCharacters.pickRandom, '抽不到角色：先下載角色資料包，或換個搜尋字'], ['{隨機姿勢}', HYPoses.pickRandom, '抽不到姿勢：還沒有姿勢卡，或搜尋不到']]) {
+        if (!params.pos.includes(token)) continue;
+        const r = await pick();
+        if (!r) throw new Error(none);
+        params.pos = params.pos.split(token).join(r.text); picks.push(r.name);
+      }
+      if (picks.length) params.random = picks;
       if (params.mode === 'inpaint') {
         if (!state.source || !HYInpaint.loaded) throw new Error('請先放入來源圖片');
         if (!HYInpaint.hasMask()) throw new Error('還沒塗遮罩：在右邊圖片上把要重畫的地方塗紅');
@@ -496,7 +512,7 @@
       }
       state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: p.mode });
       state.lastSeed = p.seed;
-      if (picked) toast('🎲 這張抽到：' + picked.name);
+      if (picks.length) toast('🎲 這張抽到：' + picks.join('、'));
       
       updateGenerateBtn();
       saveParams();
@@ -931,7 +947,7 @@
   }
   // ================================================================ 左欄「＋ 新增」的卡片
   const LS_ADDONS = 'yomu.addons';
-  const ADDON_NAMES = { hires: 'Hires Fix', char: '角色' };
+  const ADDON_NAMES = { hires: 'Hires Fix', char: '角色', pose: '姿勢' };
   const addonCard = (key) => document.querySelector(`.stack [data-addon="${key}"]`);
   // Hires Fix 加上去 = 啟用（跟著參數存、圖片拖回來也會還原）；其他卡片記在 localStorage
   const addonOn = (key) => (key === 'hires' ? $('hiresOn').checked : lsGet(LS_ADDONS, []).includes(key));
@@ -1256,6 +1272,7 @@
       const code = i >= 0 ? line.slice(0, i) : line, cmt = i >= 0 ? line.slice(i) : '';
       let html = escHtml(code)
         .replace(/embedding:[^\s,()<>&]+/gi, m => `<span class="tk-emb">${m}</span>`)
+        .replace(/\{隨機(?:角色|姿勢)\}/g, m => `<span class="tk-wc">${m}</span>`)
         .replace(/&lt;lora:[^&]*?&gt;/gi, m => `<span class="tk-lora">${m}</span>`)
         .replace(/(:)(\d+(?:\.\d+)?)(?=\))/g, '$1<span class="tk-w">$2</span>')
 ;
@@ -1732,7 +1749,7 @@
       document.body.appendChild(box); inp.focus(); inp.select();
     });
   }
-  window.HY = { askText, closeOnBackdrop, setText, replaceRange, positionMaskTools, toast, loadModels, renderAssets, compatFamilies: (...a) => compatFamilies(...a), state, lsGet, lsSet };
+  window.HY = { askText, closeOnBackdrop, setText, replaceRange, hasPart, removePart, insertPart, positionMaskTools, toast, loadModels, renderAssets, compatFamilies: (...a) => compatFamilies(...a), state, lsGet, lsSet };
   (async () => {
     bind();
     setupLayout();

@@ -5,23 +5,12 @@
   const HY = () => window.HY;
   // 跟標籤補完一樣：底線換空白、括號跳脫（不然會被當成權重語法）
   const promptText = (tag) => tag.replace(/_/g, ' ').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-  const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const tokenRe = (tag) => new RegExp(`(^|[,\\n])[ \\t]*${reEsc(promptText(tag))}[ \\t]*(?=,|\\n|$),?[ \\t]*`);
+  const TOKEN = '{隨機角色}';
   const PAGE = 60;
   let seq = 0, timer = null, checked = false, offset = 0, end = false, loading = false;
 
-  const inPrompt = (tag) => tokenRe(tag).test($('pos').value);
-
-  function toggle(tag) {
-    const ta = $('pos');
-    if (inPrompt(tag)) {
-      HY().setText(ta, ta.value.replace(tokenRe(tag), (m, sep) => (sep === ',' ? ', ' : sep)));
-      return;
-    }
-    const start = ta.selectionStart, before = ta.value.slice(0, start);
-    const prefix = before && !/[,\n]\s*$/.test(before) ? ', ' : '';
-    HY().replaceRange(ta, start, ta.selectionEnd, prefix + promptText(tag) + ', ');
-  }
+  const inPrompt = (tag) => HY().hasPart($('pos'), promptText(tag));
+  const toggle = (tag) => (inPrompt(tag) ? HY().removePart : HY().insertPart)($('pos'), promptText(tag));
 
   function syncSelected() {
     document.querySelectorAll('#charGrid .char-card').forEach(card => card.classList.toggle('selected', inPrompt(card.dataset.tag)));
@@ -82,22 +71,20 @@
     refreshStatus();
   }
 
-  /** 生成時用：開了隨機就抽一個（有搜尋字就從搜尋結果抽） */
+  /** 生成時把 {隨機角色} 換掉用：有搜尋字就從搜尋結果抽 */
   async function pickRandom() {
-    if (!$('charRandom').checked) return null;
     const c = await fetch('/yomu/api/characters/random?q=' + encodeURIComponent($('charSearch').value.trim())).then(r => r.json()).catch(() => null);
     return c?.tag ? { text: promptText(c.tag), name: c.name + (c.series ? `（${c.series}）` : '') } : null;
   }
   window.HYCharacters = { pickRandom };
 
   window.addEventListener('DOMContentLoaded', () => {
-    $('charRandom').checked = HY().lsGet('yomu.charRandom', false);
-    $('charRandom').onchange = () => HY().lsSet('yomu.charRandom', $('charRandom').checked);
+    $('charRandom').onchange = () => (($('charRandom').checked ? HY().insertPart : HY().removePart)($('pos'), TOKEN));
     $('btnCharDownload').onclick = download;
     $('btnCharUpdate').onclick = download;
     $('charSearch').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 150); });
     $('charGrid').addEventListener('scroll', (e) => { const g = e.target; if (g.scrollTop + g.clientHeight > g.scrollHeight - 300) search(true); });
-    $('pos').addEventListener('input', syncSelected);
+    $('pos').addEventListener('input', () => { $('charRandom').checked = $('pos').value.includes(TOKEN); syncSelected(); });
     refreshStatus();
   });
 })();

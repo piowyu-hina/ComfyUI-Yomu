@@ -218,9 +218,19 @@
           <div class="muted small" id="charDlState"></div>
           <div id="charBrowser" hidden>
             <input type="text" id="charSearch" placeholder="搜尋角色或作品（中文 / 英文）">
-            <label class="check char-random" title="不會改到提示詞欄位，抽到誰會顯示在通知，也會記在圖片的參數裡"><input type="checkbox" id="charRandom"><span>🎲 每次生成隨機抽一個角色（有搜尋就從搜尋結果抽）</span></label>
+            <label class="check char-random" title="提示詞裡放一個 {隨機角色}，每次生成換成抽到的角色；有搜尋字就從搜尋結果抽"><input type="checkbox" id="charRandom"><span>🎲 隨機角色 <code>{隨機角色}</code></span></label>
             <div class="char-grid" id="charGrid"></div>
           </div>
+        </div>
+      </section>
+
+      <!-- 姿勢卡 -->
+      <section class="card" data-addon="pose" hidden>
+        <header class="card-head"><span class="card-title">姿勢</span><button class="mini" id="btnPoseAdd" title="把提示詞裡選取的那段存成姿勢卡">＋ 存成姿勢卡</button><button class="addon-x" title="移除這張卡片">×</button><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <input type="text" id="poseSearch" placeholder="搜尋姿勢">
+          <label class="check char-random" title="提示詞裡放一個 {隨機姿勢}，每次生成換成抽到的姿勢；有搜尋字就從搜尋結果抽"><input type="checkbox" id="poseRandom"><span>🎲 隨機姿勢 <code>{隨機姿勢}</code></span></label>
+          <div class="pose-list" id="poseList"></div>
         </div>
       </section>
 
@@ -458,6 +468,7 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
 <script src="/yomu/static/app.js"></script>
 <script src="/yomu/static/civitai.js"></script>
 <script src="/yomu/static/characters.js"></script>
+<script src="/yomu/static/poses.js"></script>
 <script src="/yomu/static/inpaint.js"></script>
 </body>
 </html>
