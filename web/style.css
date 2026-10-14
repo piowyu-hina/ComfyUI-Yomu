@@ -445,12 +445,14 @@ button:disabled { opacity: .55; cursor: wait; }
 .card-head .addon-x + .chev { margin-left: 0; }
 .char-random { margin-top: 8px; font-size: 12px; color: var(--muted); }
 .char-random code { color: #f59e0b; font-size: 11.5px; }
-.card-head .mini + .addon-x { margin-left: 0; }
+.pose-tools { display: flex; gap: 6px; align-items: center; }
+.pose-tools .mini { flex-shrink: 0; height: 32px; white-space: nowrap; }
 .pose-list { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; margin-top: 8px; }
 .pose-item { padding: 7px 9px; background: var(--input); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 .pose-item:hover { border-color: var(--line-2); }
 .pose-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .pose-head { display: flex; align-items: center; gap: 6px; }
+.pose-name.unnamed { color: var(--muted); font-style: italic; }
 .pose-name { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pose-badge { padding: 0 6px; border-radius: 4px; background: var(--card-head); color: var(--muted); font-size: 10.5px; }
 .pose-act { padding: 0 3px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; }

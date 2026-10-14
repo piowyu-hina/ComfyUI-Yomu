@@ -226,9 +226,12 @@
 
       <!-- 姿勢卡 -->
       <section class="card" data-addon="pose" hidden>
-        <header class="card-head"><span class="card-title">姿勢</span><button class="mini" id="btnPoseAdd" title="把提示詞裡選取的那段存成姿勢卡">＋ 存成姿勢卡</button><button class="addon-x" title="移除這張卡片">×</button><button class="chev" data-collapse>▾</button></header>
+        <header class="card-head"><span class="card-title">姿勢</span><button class="addon-x" title="移除這張卡片">×</button><button class="chev" data-collapse>▾</button></header>
         <div class="card-body">
-          <input type="text" id="poseSearch" placeholder="搜尋姿勢">
+          <div class="pose-tools">
+            <input type="text" id="poseSearch" placeholder="搜尋姿勢">
+            <button class="mini" id="btnPoseAdd" title="把正面提示詞裡選取的那段直接存成一張姿勢卡">＋ 存成卡</button>
+          </div>
           <label class="check char-random" title="提示詞裡放一個 {隨機姿勢}，每次生成換成抽到的姿勢；有搜尋字就從搜尋結果抽"><input type="checkbox" id="poseRandom"><span>🎲 隨機姿勢 <code>{隨機姿勢}</code></span></label>
           <div class="pose-list" id="poseList"></div>
         </div>
