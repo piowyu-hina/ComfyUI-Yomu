@@ -114,8 +114,8 @@
             <label>解析度</label>
             <div class="row">
               <select id="presetSel" class="grow">
-                <option value="720x1280">720 × 1280（9:16）</option>
-                <option value="1280x720">1280 × 720（16:9）</option>
+                <option value="768x1344">768 × 1344（9:16）</option>
+                <option value="1344x768">1344 × 768（16:9）</option>
                 <option value="1024x1024">1024 × 1024（1:1）</option>
                 <option value="768x1024">768 × 1024（3:4）</option>
                 <option value="1024x768">1024 × 768（4:3）</option>
@@ -128,8 +128,8 @@
             </div>
           </div>
           <div class="row">
-            <div class="field grow"><label>寬</label><input type="number" id="width" min="256" max="2048" step="8" value="720"></div>
-            <div class="field grow"><label>高</label><input type="number" id="height" min="256" max="2048" step="8" value="1280"></div>
+            <div class="field grow"><label>寬</label><input type="number" id="width" min="256" max="2048" step="64" value="768"></div>
+            <div class="field grow"><label>高</label><input type="number" id="height" min="256" max="2048" step="64" value="1344"></div>
           </div>
           <label class="check" id="fieldShrink" title="Deep Shrink：前 35% 步數在半尺寸決定構圖，再回全尺寸畫細節。直出 1536 以上不會雙頭、五官拉開" hidden><input type="checkbox" id="shrinkOn"><span>大尺寸防崩（Deep Shrink）</span></label>
           <div class="field">

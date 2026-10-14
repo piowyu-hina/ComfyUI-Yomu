@@ -83,8 +83,8 @@
     0
    ],
    "upscale_method": "lanczos",
-   "width": 720,
-   "height": 1280,
+   "width": 768,
+   "height": 1344,
    "crop": "center"
   },
   "_meta": {

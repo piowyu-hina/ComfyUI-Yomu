@@ -69,8 +69,8 @@
  "6": {
   "class_type": "EmptyLatentImage",
   "inputs": {
-   "width": 720,
-   "height": 1280,
+   "width": 768,
+   "height": 1344,
    "batch_size": 1
   },
   "_meta": {
@@ -156,8 +156,8 @@
     0
    ],
    "upscale_method": "bilinear",
-   "width": 1440,
-   "height": 2560,
+   "width": 1536,
+   "height": 2688,
    "crop": "disabled"
   },
   "_meta": {

@@ -72,7 +72,10 @@
   const setProgress = (pct) => ($('progressFill').style.width = Math.max(0, Math.min(100, pct)) + '%');
   const viewUrl = (img) => '/view?' + new URLSearchParams({ filename: img.filename, subfolder: img.subfolder || '', type: img.type || 'output' });
   const randomSeed = () => Math.floor(Math.random() * 4294967295);
-  const round8 = (n) => Math.max(8, Math.round(n / 8) * 8);
+  // 圖片的寬高一律 64 的倍數（SDXL 等模型的訓練尺寸）；影片照模型自己的規則，只取 8 的倍數
+  const sizeStep = () => (/video/.test(state.mode) ? 8 : 64);
+  const roundSize = (n) => Math.max(sizeStep(), Math.round(n / sizeStep()) * sizeStep());
+  const snapSize = () => { for (const id of ['width', 'height']) $(id).value = roundSize(parseInt($(id).value, 10) || 1024); syncPreset(); };
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
   const ui = lsGet(LS_UI, {});   // 版面：欄寬、卡片摺疊、卡片順序
@@ -366,7 +369,7 @@
       }
     }
     setSlot(prompt, 'hires_model', { model_name: p.hires.model });
-    setSlot(prompt, 'hires_resize', { width: round8(p.width * p.hires.scale), height: round8(p.height * p.hires.scale) });
+    setSlot(prompt, 'hires_resize', { width: roundSize(p.width * p.hires.scale), height: roundSize(p.height * p.hires.scale) });
     setSlot(prompt, 'hires_sampler', { seed: p.seed, steps: p.hires.steps, cfg: p.cfg, sampler_name: p.sampler, scheduler: p.scheduler, denoise: p.hires.denoise });
   }
 
@@ -385,7 +388,7 @@
       clipskip: parseInt($('clipskip').value, 10),
       loras,
       pos: $('pos').value, neg: $('neg').value,
-      width: round8(parseInt($('width').value, 10) || 720), height: round8(parseInt($('height').value, 10) || 1280),
+      width: roundSize(parseInt($('width').value, 10) || 768), height: roundSize(parseInt($('height').value, 10) || 1344),
       steps: parseInt($('steps').value, 10), cfg: parseFloat($('cfg').value),
       sampler: $('sampler').value, scheduler: $('scheduler').value,
       seed,
@@ -619,7 +622,7 @@
     if (p.neg != null) setText($('neg'), p.neg);
     if (p.width) $('width').value = p.width;
     if (p.height) $('height').value = p.height;
-    syncPreset();
+    if (/video/.test(p.mode || state.mode)) syncPreset(); else snapSize();   // 舊圖的 720×1280 這類尺寸也對齊 64
     if (p.steps) { $('steps').value = p.steps; $('stepsVal').textContent = p.steps; }
     if (p.cfg != null) { $('cfg').value = p.cfg; $('cfgVal').textContent = fmt(p.cfg); }
     if (p.sampler && [...$('sampler').options].some(o => o.value === p.sampler)) $('sampler').value = p.sampler;
@@ -906,7 +909,7 @@
   }
 
   // ================================================================ size / hires / mode
-  const IMG_PRESETS = [['720x1280', '720 × 1280（9:16）'], ['1280x720', '1280 × 720（16:9）'], ['1024x1024', '1024 × 1024（1:1）'], ['768x1024', '768 × 1024（3:4）'], ['1024x768', '1024 × 768（4:3）'], ['640x896', '640 × 896（5:7）'], ['832x1216', '832 × 1216（2:3）'], ['1216x832', '1216 × 832（3:2）'], ['1024x1536', '1024 × 1536（2:3 大）'], ['1536x1024', '1536 × 1024（3:2 大）']];
+  const IMG_PRESETS = [['768x1344', '768 × 1344（9:16）'], ['1344x768', '1344 × 768（16:9）'], ['1024x1024', '1024 × 1024（1:1）'], ['768x1024', '768 × 1024（3:4）'], ['1024x768', '1024 × 768（4:3）'], ['640x896', '640 × 896（5:7）'], ['832x1216', '832 × 1216（2:3）'], ['1216x832', '1216 × 832（3:2）'], ['1024x1536', '1024 × 1536（2:3 大）'], ['1536x1024', '1536 × 1024（3:2 大）']];
   const VID_PRESETS = [['1280x704', '1280 × 704（16:9 720p）'], ['704x1280', '704 × 1280（9:16 720p）'], ['960x544', '960 × 544（16:9 小）'], ['544x960', '544 × 960（9:16 小）'], ['832x480', '832 × 480（480p）'], ['480x832', '480 × 832（480p 直）'], ['640x640', '640 × 640']];
   /** 來源圖依長邊縮放、取 16 的倍數 */
   function fitSource(longSide) {
@@ -917,6 +920,7 @@
   }
   function setVideoPresets(isVideo) {
     const sel = $('presetSel'), cur = sel.value;
+    $('width').step = $('height').step = sizeStep();
     // 圖生影片：多幾個「跟來源同比例」的快捷（依長邊）
     const srcOpts = [];
     if (state.mode === 'img2video' && state.source?.width && state.source?.height) {
@@ -943,7 +947,7 @@
     addonCard('hires').hidden = !state.hiresSupported || !on;
     renderAddonMenu();
     const s = parseFloat($('hiresScale').value);
-    $('hiresTarget').textContent = on ? `→ ${round8($('width').value * s)}×${round8($('height').value * s)}` : '';
+    $('hiresTarget').textContent = on ? `→ ${roundSize($('width').value * s)}×${roundSize($('height').value * s)}` : '';
   }
   // ================================================================ 左欄「＋ 新增」的卡片
   const LS_ADDONS = 'yomu.addons';
@@ -1679,6 +1683,7 @@
     $('btnSwap').onclick = () => { const w = $('width').value; $('width').value = $('height').value; $('height').value = w; syncPreset(); };
     $('presetSel').onchange = () => { const v = $('presetSel').value; if (v === 'custom') return; const [w, h] = v.split('x'); $('width').value = w; $('height').value = h; syncHires(); };
     $('width').oninput = syncPreset; $('height').oninput = syncPreset;
+    $('width').onchange = snapSize; $('height').onchange = snapSize;   // 打完數字才對齊，打字途中不跳
     $('frames').oninput = () => setVideoPresets(state.mode === 'txt2video');
     const sbModel = () => { $('sbModel').textContent = `${PngInfo.baseName($('ckpt').value) || '未選模型'} · ${$('width').value}×${$('height').value} · ${$('steps').value}步 · CFG ${$('cfgVal').textContent}`; };
     $('stack').addEventListener('input', sbModel); $('stack').addEventListener('change', sbModel); setTimeout(sbModel, 1500);
