@@ -236,6 +236,16 @@ SEARCH_MAX = 200      # 合併後最多回幾筆
 RELATED_MAX = 2       # 搜尋詞另外帶幾個相關的作品 / 角色名
 
 
+def _norm(s):
+    return re.sub(r"[\s_]+", " ", str(s or "").lower()).strip()
+
+
+def _mentions(m, term):
+    """模型名字或標籤裡有沒有提到 term。Civitai 遇到不認得的標籤不會回空的，而是忽略條件整批回全站熱門，補充搜尋要自己過濾"""
+    t = _norm(term)
+    return t in _norm(m.get("name")) or any(t in _norm(x) for x in m.get("tags") or [])
+
+
 def related_terms(query):
     """跟搜尋詞相關的熱門作品 / 角色名：ark → arknights，miku → hatsune miku；中文從角色資料包找（心 → hsin）"""
     q = query.strip().lower()
@@ -334,32 +344,35 @@ def register(routes):
         # 而且名字沒寫關鍵字、只掛標籤的（例如只叫角色名的 LoRA）也不會出來。
         # 所以第一頁同時搜：原詞、加底線的詞、單複數兩種標籤、相關的作品 / 角色名（名字和標籤都搜），
         # 合併後照排序排好；「載入更多」沿用原詞的游標。
-        jobs = [(dict(params), cursor, SEARCH_PAGES)]
+        # 每個工作的最後一項：結果裡一定要提到的詞（原詞那個 None，相信 Civitai）
+        jobs = [(dict(params), cursor, SEARCH_PAGES, None)]
         related = related_terms(query) if query and not cursor else []
         if query and not cursor:
             no_query = {k: v for k, v in params.items() if k != "query"}
-            jobs.append((dict(params, query=query[:-1] if query.endswith("_") else query + "_"), None, 1))
+            jobs.append((dict(params, query=query[:-1] if query.endswith("_") else query + "_"), None, 1, query))
             tag = query.lower().replace("_", " ").strip()
             for t in dict.fromkeys([tag, tag[:-1] if tag.endswith("s") else tag + "s"]):
-                jobs.append((dict(no_query, tag=t), None, 1))
+                jobs.append((dict(no_query, tag=t), None, 1, query))
             for term in related:
-                jobs.append((dict(params, query=term), None, 1))
-                jobs.append((dict(no_query, tag=term), None, 1))
-        results = await asyncio.gather(*[collect(*job, limit) for job in jobs], return_exceptions=True)
+                jobs.append((dict(params, query=term), None, 1, term))
+                jobs.append((dict(no_query, tag=term), None, 1, term))
+        results = await asyncio.gather(*[collect(p, c, n, limit) for p, c, n, _ in jobs], return_exceptions=True)
         if isinstance(results[0], Exception):
             return web.json_response({"ok": False, "msg": f"連線失敗：{results[0]}"}, status=502)
         merged, seen = [], set()
-        for res in results:
+        for (_, _, _, term), res in zip(jobs, results):
             if isinstance(res, Exception):
                 continue
             for m in res[0]:
-                if m["id"] not in seen and not (sfw and m.get("nsfw")):
+                if m["id"] not in seen and not (sfw and m.get("nsfw")) and (not term or _mentions(m, term)):
                     seen.add(m["id"])
                     merged.append(slim_model(m, sfw))
         key = {"Most Downloaded": lambda m: m["downloads"] or 0, "Highest Rated": lambda m: m["likes"] or 0,
                "Newest": lambda m: (m["versions"][0]["publishedAt"] or "") if m["versions"] else ""}.get(q.get("sort"))
         if key and len(jobs) > 1:
             merged.sort(key=key, reverse=True)
+        if query:
+            merged.sort(key=lambda m: _norm(query) not in _norm(m["name"]))   # 名字裡就有搜尋字的排最前面
         return web.json_response({"ok": True, "items": merged[:SEARCH_MAX], "nextCursor": results[0][1], "related": related})
 
     @routes.get("/yomu/api/civitai/model")

@@ -12,9 +12,17 @@
   const S = { items: [], cursor: null, loading: false, q: '', detail: null, pollTimer: null, seq: 0, related: [] };
   const nsfwParam = () => '&nsfw=' + ($('cvNsfw').checked ? 1 : 0);
 
+  // 「跟目前模型」：看左邊選的 Checkpoint 是哪個底模（cm-info 的 Base Model，本來就是 Civitai 的寫法）；
+  // Illustrious 和 NoobAI 的 LoRA 大多通用，Pony 不通用所以不帶。看不出底模才退回整個架構家族
+  const SAME_BASE = { Illustrious: ['Illustrious', 'NoobAI'], NoobAI: ['NoobAI', 'Illustrious'] };
+  function autoBases() {
+    const ck = $('ckpt').value, info = HY().state.modelInfo;
+    const base = (info['checkpoints/' + ck] || info['diffusion_models/' + ck] || {}).baseModel;
+    return base ? (SAME_BASE[base] || [base]) : HY().compatFamilies().flatMap(f => BASE_BY_FAMILY[f] || []);
+  }
+
   function filters() {
-    const fams = HY().compatFamilies();
-    const bases = $('cvBase').value === 'auto' ? fams.flatMap(f => BASE_BY_FAMILY[f] || []) : ($('cvBase').value === 'all' ? [] : [$('cvBase').value]);
+    const bases = $('cvBase').value === 'auto' ? autoBases() : ($('cvBase').value === 'all' ? [] : [$('cvBase').value]);
     const noBase = ['Upscaler', 'VAE'].includes($('cvType').value);   // 放大模型 / VAE 不分底模
     return { types: $('cvType').value, baseModels: noBase ? '' : bases.join(','), sort: $('cvSort').value, nsfw: $('cvNsfw').checked ? '1' : '0', query: $('cvSearch').value.trim() };
   }
