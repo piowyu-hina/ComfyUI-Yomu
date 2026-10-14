@@ -16,7 +16,6 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 HOST, PORT = "127.0.0.1", 8190
 YOMU_REPO = "https://github.com/piowyu-hina/ComfyUI-Yomu.git"
 COMFY_REPO = "https://github.com/comfyanonymous/ComfyUI.git"
@@ -94,21 +93,6 @@ def detect_gpu():
     return name, "cu130" if major >= 580 else "cu128" if major >= 570 else "cu126"
 
 
-def yomu_repo():
-    if YOMU_REPO:
-        return YOMU_REPO
-    root = os.path.dirname(HERE)
-    try:
-        top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=HERE, text=True,
-                                     stderr=subprocess.DEVNULL, creationflags=NO_WINDOW).strip()
-        if os.path.normcase(os.path.abspath(top)) != os.path.normcase(root):
-            return ""
-        return subprocess.check_output(["git", "remote", "get-url", "origin"], cwd=HERE, text=True,
-                                       stderr=subprocess.DEVNULL, creationflags=NO_WINDOW).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
-
-
 def clone(url, path):
     if os.path.isdir(os.path.join(path, ".git")):
         log(f"  {os.path.basename(path)} 已存在，略過")
@@ -146,9 +130,6 @@ def install_job(opts):
         free = shutil.disk_usage(os.path.splitdrive(dest)[0] + os.sep).free / 2**30
         if free < MIN_FREE_GB:
             raise RuntimeError(f"磁碟只剩 {free:.1f} GB，至少需要 {MIN_FREE_GB} GB（不含模型）")
-        repo = opts["yomu_repo"].strip()
-        if not repo:
-            raise RuntimeError("沒有 Yomu 的 GitHub 網址")
 
         step("下載 ComfyUI")
         if os.path.isdir(dest) and os.listdir(dest) and not os.path.isfile(os.path.join(dest, "main.py")):
@@ -162,19 +143,20 @@ def install_job(opts):
             raise RuntimeError("建立 venv 失敗")
 
         step("安裝 PyTorch（約 3 GB，需要一點時間）")
-        cuda = opts["cuda"]
+        gpu, cuda = detect_gpu()
+        log(f"顯卡：{gpu or '沒有 NVIDIA 顯卡'}，安裝 {cuda} 版")
         index = "https://download.pytorch.org/whl/" + cuda
         if run([py, "-m", "pip", "install", "torch", "torchvision", "torchaudio", "--index-url", index]) != 0:
             raise RuntimeError("PyTorch 安裝失敗")
 
         step("安裝 ComfyUI 相依套件（網路慢時可能要 10 到 30 分鐘，請耐心等）")
-        if run([py, "-m", "pip", "install", "-r", os.path.join(dest, "requirements.txt")], dest) != 0:
+        if run([py, "-m", "pip", "install", "-r", os.path.join(dest, "requirements.txt"), "-r", os.path.join(dest, "manager_requirements.txt")], dest) != 0:
             raise RuntimeError("相依套件安裝失敗")
 
         step("下載 Yomu")
         yomu = os.path.join(dest, "custom_nodes", "ComfyUI-Yomu")
-        if not clone(repo, yomu):
-            raise RuntimeError("下載 Yomu 失敗，請確認 GitHub 網址")
+        if not clone(YOMU_REPO, yomu):
+            raise RuntimeError("下載 Yomu 失敗")
         install_requirements(py, yomu)
 
         for url, path in repos:
@@ -203,8 +185,8 @@ PAGE = r"""<!DOCTYPE html>
 body{background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI","Microsoft JhengHei",sans-serif;display:flex;justify-content:center;padding:40px 16px}
 .card{width:100%;max-width:720px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:26px;display:flex;flex-direction:column;gap:16px}
 h1{font-size:20px}.muted{color:var(--muted);font-size:12.5px}
-label.f{display:flex;flex-direction:column;gap:4px}
-input[type=text],select{background:var(--bg3);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
+.f{display:flex;flex-direction:column;gap:4px}
+input[type=text]{background:var(--bg3);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
 .chk{display:flex;gap:8px;align-items:center;cursor:pointer}
 button{border:0;background:linear-gradient(135deg,var(--accent),#a78bfa);color:#fff;padding:11px 18px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer}
 button:disabled{opacity:.4;cursor:not-allowed}
@@ -214,8 +196,7 @@ pre{background:#0a0c12;border:1px solid var(--line);border-radius:9px;padding:12
 <h1>Yomu 安裝程式</h1>
 <div class="muted">會下載 ComfyUI、建立獨立的 Python 環境、裝好 Yomu（含補幀節點與標籤資料）。模型不在這裡下載（約需 12 GB 空間，不含模型）。</div>
 <label class="f">安裝位置<input type="text" id="dest"></label>
-<label class="f">顯卡 / PyTorch 版本<select id="cuda"></select><span class="muted" id="gpu"></span></label>
-<label class="f">Yomu 的 GitHub 網址<input type="text" id="repo"></label>
+<div class="f">顯卡<span class="muted" id="gpu">偵測中…</span></div>
 <div style="display:flex;gap:10px"><button id="go">開始安裝</button><button id="open" disabled>開啟 Yomu</button></div>
 <div class="track"><div class="fill" id="fill"></div></div>
 <div id="now" class="muted" style="white-space:pre-line"></div>
@@ -227,11 +208,8 @@ const api=async(p,body)=>(await fetch(p,body?{method:'POST',headers:{'Content-Ty
 let timer=null;
 (async()=>{
   const i=await api('/api/info');
-  $('dest').value=i.dest; $('repo').value=i.repo;
-  $('gpu').textContent=i.gpu?`偵測到 ${i.gpu}`:'沒有偵測到 NVIDIA 顯卡，只能用 CPU（很慢）';
-  for(const [v,t] of [['cu130','NVIDIA（驅動 580 以上）'],['cu128','NVIDIA（驅動 570 以上）'],['cu126','NVIDIA（較舊驅動）'],['cpu','只用 CPU']])
-    $('cuda').add(new Option(t,v));
-  $('cuda').value=i.cuda;
+  $('dest').value=i.dest;
+  $('gpu').textContent=i.gpu?`${i.gpu}，會自動安裝對應的 PyTorch（${i.cuda}）`:'沒有偵測到 NVIDIA 顯卡，會安裝 CPU 版 PyTorch（生成會很慢）';
   if(i.running){timer=setInterval(poll,1000);poll();}
 })();
 async function poll(){
@@ -246,7 +224,7 @@ ${s.now}`+(idle>20?`
   if(!s.running){clearInterval(timer);timer=null;$('open').disabled=!s.ok;if(s.ok)$('fill').style.width='100%';}
 }
 $('go').onclick=async()=>{
-  const r=await api('/api/install',{dest:$('dest').value,cuda:$('cuda').value,yomu_repo:$('repo').value});
+  const r=await api('/api/install',{dest:$('dest').value});
   if(!r.ok){alert(r.msg);return;}
   $('go').disabled=true;timer=setInterval(poll,1000);poll();
 };
@@ -274,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/info":
             name, cuda = detect_gpu()
             return self._send(200, json.dumps({
-                "dest": os.path.join(os.path.expanduser("~"), "Yomu"), "repo": yomu_repo(), "gpu": name, "cuda": cuda,
+                "dest": os.path.join(os.path.expanduser("~"), "Yomu"), "gpu": name, "cuda": cuda,
                 "running": _job["running"]}))
         if path == "/api/status":
             with _lock:
