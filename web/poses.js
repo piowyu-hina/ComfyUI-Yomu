@@ -13,6 +13,8 @@
     return poses.filter(p => !q || p.name.toLowerCase().includes(q) || p.text.toLowerCase().includes(q));
   };
   const hint = (text) => { $('poseHint').textContent = text; };
+  /** 存檔格式：「單字, 單字」— 逗號後一個空白，拿掉多的空白、空的一段和最後的逗號；換行也當逗號 */
+  const tidy = (text) => text.split(/[,\n]/).map(t => t.trim().replace(/\s+/g, ' ')).filter(Boolean).join(', ');
 
   /** 目前放在提示詞裡的那張：有好幾張的描述都對得上時（一張是另一張的開頭），取描述最長的 */
   const active = () => poses.filter(p => HY().hasPart($('pos'), p.text)).sort((a, b) => b.text.length - a.text.length)[0] || null;
@@ -33,7 +35,7 @@
   /** 把提示詞裡反白的那段直接存成一張，名稱欄位直接打開讓你取名 */
   function addFromSelection() {
     const ta = $('pos');
-    const text = ta.value.slice(ta.selectionStart, ta.selectionEnd).replace(/^[\s,]+|[\s,]+$/g, '');
+    const text = tidy(ta.value.slice(ta.selectionStart, ta.selectionEnd));
     if (!text) return hint('先在正面提示詞反白選取要存的那段');
     hint('');
     const same = poses.find(p => p.text === text);
@@ -45,7 +47,7 @@
   }
 
   function finishEdit(p, row) {
-    const text = row.querySelector('.pose-edit-text').value.replace(/^[\s,]+|[\s,]+$/g, '');
+    const text = tidy(row.querySelector('.pose-edit-text').value);
     if (text) Object.assign(p, { name: row.querySelector('.pose-edit-name').value.trim(), text });
     editing = null;
     save(); render();
@@ -119,6 +121,7 @@
     $('poseRandom').onchange = () => (($('poseRandom').checked ? HY().insertPart : HY().removePart)($('pos'), TOKEN));
     $('pos').addEventListener('input', () => { $('poseRandom').checked = $('pos').value.includes(TOKEN); hint(''); if (!editing) render(); });
     poses = await fetch('/yomu/api/poses').then(r => r.json()).catch(() => []);
+    if (poses.some(p => p.text !== tidy(p.text))) { for (const p of poses) p.text = tidy(p.text); save(); }   // 以前存的也整理一次
     $('poseRandom').checked = $('pos').value.includes(TOKEN);
     render();
   });
