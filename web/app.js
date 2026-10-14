@@ -944,7 +944,9 @@
   }
   function syncHires() {
     const on = $('hiresOn').checked;
-    addonCard('hires').hidden = !state.hiresSupported || !on;
+    if (on && !addonOn('hires')) lsSet(LS_ADDONS, [...lsGet(LS_ADDONS, []), 'hires']);   // 拖進來的圖有開 Hires Fix：卡片跟著加回來
+    addonCard('hires').hidden = !state.hiresSupported || !addonOn('hires');
+    addonCard('hires').classList.toggle('off', !on);
     renderAddonMenu();
     const s = parseFloat($('hiresScale').value);
     $('hiresTarget').textContent = on ? `→ ${roundSize($('width').value * s)}×${roundSize($('height').value * s)}` : '';
@@ -953,11 +955,13 @@
   const LS_ADDONS = 'yomu.addons';
   const ADDON_NAMES = { hires: 'Hires Fix', char: '角色', pose: '姿勢' };
   const addonCard = (key) => document.querySelector(`.stack [data-addon="${key}"]`);
-  // Hires Fix 加上去 = 啟用（跟著參數存、圖片拖回來也會還原）；其他卡片記在 localStorage
-  const addonOn = (key) => (key === 'hires' ? $('hiresOn').checked : lsGet(LS_ADDONS, []).includes(key));
+  // 加了哪些卡片記在 localStorage；Hires Fix 開不開看卡片裡的勾選框（跟著參數存）
+  const addonOn = (key) => lsGet(LS_ADDONS, []).includes(key);
   function setAddon(key, on) {
-    if (key === 'hires') { $('hiresOn').checked = on; syncHires(); saveParams(); }
-    else { lsSet(LS_ADDONS, [...lsGet(LS_ADDONS, []).filter(k => k !== key), ...(on ? [key] : [])]); addonCard(key).hidden = !on; renderAddonMenu(); }
+    lsSet(LS_ADDONS, [...lsGet(LS_ADDONS, []).filter(k => k !== key), ...(on ? [key] : [])]);
+    addonCard(key).hidden = !on;
+    if (key === 'hires' && !on) { $('hiresOn').checked = false; saveParams(); }   // 拿掉 Hires Fix 卡片 = 關掉；開關在卡片裡的勾選框
+    if (key === 'hires') syncHires(); else renderAddonMenu();
     if (!on) return;
     const card = addonCard(key), scroll = document.querySelector('.stack-scroll');
     scroll.insertBefore(card, $('addonAdd'));                       // 新增的卡片放到最下面，並記住排序

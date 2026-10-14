@@ -145,6 +145,7 @@ body.resizing * { cursor: inherit !important; }
 .card.collapsed .card-head { border-bottom: 0; }
 .card-body { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .card.addon { border-left: 3px solid var(--accent); }
+.card.addon.off .card-body > :not(:first-child) { opacity: .45; pointer-events: none; }
 
 /* ---------- 表單 ---------- */
 .field { display: flex; flex-direction: column; gap: 5px; }
