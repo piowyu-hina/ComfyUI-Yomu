@@ -233,6 +233,7 @@
             <button class="mini" id="btnPoseAdd" title="把正面提示詞裡選取的那段直接存成一張姿勢卡">＋ 存成卡</button>
           </div>
           <label class="check char-random" title="提示詞裡放一個 {隨機姿勢}，每次生成換成抽到的姿勢；有搜尋字就從搜尋結果抽"><input type="checkbox" id="poseRandom"><span>🎲 隨機姿勢 <code>{隨機姿勢}</code></span></label>
+          <div class="muted small" id="poseHint"></div>
           <div class="pose-list" id="poseList"></div>
         </div>
       </section>
@@ -348,6 +349,7 @@ jpeg artifacts, watermark, text, logo, signature, cropped, out of frame</textare
 <footer class="statusbar">
   <span id="sbConn">●</span>
   <span id="sbQueue"></span>
+  <span id="sbRandom" title="上一次生成 {隨機角色} / {隨機姿勢} 抽到的"></span>
   <span class="sb-sep"></span>
   <span id="sbModel" class="sb-grow"></span>
   <span id="sbGallery"></span>

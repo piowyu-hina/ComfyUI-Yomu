@@ -512,7 +512,7 @@
       }
       state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: p.mode });
       state.lastSeed = p.seed;
-      if (picks.length) toast('🎲 這張抽到：' + picks.join('、'));
+      $('sbRandom').textContent = picks.length ? '🎲 ' + picks.join('、') : '';
       
       updateGenerateBtn();
       saveParams();

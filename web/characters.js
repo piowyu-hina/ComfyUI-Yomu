@@ -66,8 +66,7 @@
     }
   }
   async function download() {
-    const r = await fetch('/yomu/api/characters/download', { method: 'POST' }).then(r => r.json()).catch(() => null);
-    if (r && !r.ok) HY().toast(r.msg, true);
+    await fetch('/yomu/api/characters/download', { method: 'POST' }).catch(() => null);
     refreshStatus();
   }
 

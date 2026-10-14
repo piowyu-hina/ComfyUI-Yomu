@@ -1,15 +1,18 @@
-/* 姿勢卡：左欄「姿勢」卡片。一張 = 名稱 + 一整段描述，一次只放一張進正面提示詞 — 依賴 app.js 暴露的 window.HY */
+/* 姿勢卡：左欄「姿勢」卡片。一張 = 名稱 + 一整段描述，一次只放一張進正面提示詞 — 依賴 app.js 暴露的 window.HY
+ * 不跳任何視窗：改名、修改、刪除確認、提示都在卡片裡面做 */
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
   const HY = () => window.HY;
   const TOKEN = '{隨機姿勢}';
   let poses = [];
+  let editing = null, deleting = null, flash = null;   // 正在改的卡、等第二下確認刪除的卡、剛存 / 重複時閃一下的卡
 
   const filtered = () => {
     const q = $('poseSearch').value.trim().toLowerCase();
     return poses.filter(p => !q || p.name.toLowerCase().includes(q) || p.text.toLowerCase().includes(q));
   };
+  const hint = (text) => { $('poseHint').textContent = text; };
 
   function select(p) {
     const ta = $('pos'), on = HY().hasPart(ta, p.text);
@@ -20,34 +23,28 @@
 
   async function save() {
     const r = await fetch('/yomu/api/poses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(poses) }).then(r => r.json()).catch(() => null);
-    if (!r?.ok) HY().toast('姿勢卡存檔失敗', true);
-    render();
+    hint(r?.ok ? '' : '存檔失敗，請確認 ComfyUI 有在執行');
   }
 
-  /** 把提示詞裡選取的那段直接存成一張（名稱先空著，之後按 ✎ 取） */
+  /** 把提示詞裡反白的那段直接存成一張，名稱欄位直接打開讓你取名 */
   function addFromSelection() {
     const ta = $('pos');
     const text = ta.value.slice(ta.selectionStart, ta.selectionEnd).replace(/^[\s,]+|[\s,]+$/g, '');
-    if (!text) return HY().toast('先在正面提示詞選取要存的那段', true);
-    if (poses.some(p => p.text === text)) return HY().toast('已經有這張姿勢卡了');
-    poses.push({ name: '', text });
-    save();
-    HY().toast('已存成姿勢卡，按 ✎ 可以取名字');
+    if (!text) return hint('先在正面提示詞反白選取要存的那段');
+    hint('');
+    const same = poses.find(p => p.text === text);
+    if (same) { flash = same; deleting = null; render(); return; }
+    const card = { name: '', text };
+    poses.push(card);
+    editing = card; deleting = null; flash = card;
+    save(); render();
   }
 
-  async function edit(p) {
-    const name = await HY().askText({ title: '姿勢卡名稱', value: p.name, placeholder: '例如：坐在窗邊回頭看', okText: '下一步' });
-    if (typeof name !== 'string') return;
-    const text = await HY().askText({ title: '描述（要加進提示詞的整段）', value: p.text, okText: '儲存' });
-    if (typeof text !== 'string' || !text.trim()) return;
-    Object.assign(p, { name: name.trim(), text: text.trim().replace(/[\s,]+$/, '') });
-    save();
-  }
-
-  function remove(p) {
-    if (!confirm(`刪除姿勢卡「${p.name || '未命名'}」？`)) return;
-    poses = poses.filter(x => x !== p);
-    save();
+  function finishEdit(p, row) {
+    const text = row.querySelector('.pose-edit-text').value.replace(/^[\s,]+|[\s,]+$/g, '');
+    if (text) Object.assign(p, { name: row.querySelector('.pose-edit-name').value.trim(), text });
+    editing = null;
+    save(); render();
   }
 
   function render() {
@@ -55,24 +52,50 @@
     list.replaceChildren();
     for (const p of filtered()) {
       const row = document.createElement('div');
-      row.className = 'pose-item' + (HY().hasPart(ta, p.text) ? ' selected' : ''); row.title = p.text;
+      row.className = 'pose-item' + (HY().hasPart(ta, p.text) ? ' selected' : '') + (p === flash ? ' flash' : '');
+      if (p === editing) {
+        row.classList.add('editing');
+        const name = document.createElement('input'); name.type = 'text'; name.className = 'pose-edit-name'; name.value = p.name; name.placeholder = '名稱，例如：坐在窗邊回頭看';
+        const text = document.createElement('textarea'); text.className = 'pose-edit-text'; text.rows = 2; text.value = p.text;
+        const btns = document.createElement('div'); btns.className = 'pose-edit-btns';
+        const ok = document.createElement('button'); ok.className = 'mini'; ok.textContent = '✓ 完成';
+        const cancel = document.createElement('button'); cancel.className = 'mini'; cancel.textContent = '取消';
+        ok.onclick = () => finishEdit(p, row);
+        cancel.onclick = () => { editing = null; render(); };
+        for (const el of [name, text]) el.onkeydown = (e) => {
+          if (e.key === 'Escape') cancel.onclick();
+          if (e.key === 'Enter' && (el === name || e.ctrlKey)) { e.preventDefault(); finishEdit(p, row); }
+        };
+        btns.append(ok, cancel);
+        row.append(name, text, btns);
+        list.append(row);
+        setTimeout(() => name.focus());
+        continue;
+      }
+      row.title = p.text;
       const head = document.createElement('div'); head.className = 'pose-head';
       const name = document.createElement('span'); name.className = 'pose-name' + (p.name ? '' : ' unnamed'); name.textContent = p.name || '未命名';
-      head.append(name);
-      const act = (label, title, fn) => {
-        const b = document.createElement('button'); b.className = 'pose-act'; b.textContent = label; b.title = title;
-        b.onclick = (e) => { e.stopPropagation(); fn(p); };
-        head.append(b);
+      const ed = document.createElement('button'); ed.className = 'pose-act'; ed.textContent = '✎'; ed.title = '修改名稱和描述';
+      ed.onclick = (e) => { e.stopPropagation(); editing = p; deleting = null; render(); };
+      const del = document.createElement('button');
+      del.className = 'pose-act' + (p === deleting ? ' confirm' : ''); del.textContent = p === deleting ? '再按一次刪除' : '🗑'; del.title = '刪除';
+      del.onclick = (e) => {
+        e.stopPropagation();
+        if (p !== deleting) { deleting = p; render(); return; }
+        poses = poses.filter(x => x !== p); deleting = null;
+        save(); render();
       };
-      act('✎', '修改', edit); act('🗑', '刪除', remove);
+      head.append(name, ed, del);
       const text = document.createElement('div'); text.className = 'pose-text'; text.textContent = p.text;
       row.append(head, text);
-      row.onclick = () => select(p);
+      row.onclick = () => { deleting = null; select(p); };
       list.append(row);
+      if (p === flash) setTimeout(() => row.scrollIntoView({ block: 'nearest' }));
     }
+    flash = null;
     if (!list.children.length) {
       const e = document.createElement('div'); e.className = 'char-empty';
-      e.textContent = poses.length ? '沒有符合的姿勢' : '還沒有姿勢卡。在提示詞選取一段描述，按「＋ 存成卡」。';
+      e.textContent = poses.length ? '沒有符合的姿勢' : '還沒有姿勢卡。在提示詞反白選取一段描述，按「＋ 存成卡」。';
       list.append(e);
     }
   }
@@ -90,7 +113,7 @@
     $('poseSearch').addEventListener('input', render);
     $('btnPoseAdd').onclick = addFromSelection;
     $('poseRandom').onchange = () => (($('poseRandom').checked ? HY().insertPart : HY().removePart)($('pos'), TOKEN));
-    $('pos').addEventListener('input', () => { $('poseRandom').checked = $('pos').value.includes(TOKEN); render(); });
+    $('pos').addEventListener('input', () => { $('poseRandom').checked = $('pos').value.includes(TOKEN); hint(''); if (!editing) render(); });
     poses = await fetch('/yomu/api/poses').then(r => r.json()).catch(() => []);
     $('poseRandom').checked = $('pos').value.includes(TOKEN);
     render();
