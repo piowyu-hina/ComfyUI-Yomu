@@ -66,6 +66,7 @@
   const round8 = (n) => Math.max(8, Math.round(n / 8) * 8);
   const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+  const ui = lsGet(LS_UI, {});   // 版面：欄寬、卡片摺疊、卡片順序
   const fmt = (n, d = 2) => Number(n).toFixed(d).replace(/\.?0+$/, '');
 
   function fillSelect(sel, items, preferred) {
@@ -937,7 +938,12 @@
   function setAddon(key, on) {
     if (key === 'hires') { $('hiresOn').checked = on; syncHires(); saveParams(); }
     else { lsSet(LS_ADDONS, [...lsGet(LS_ADDONS, []).filter(k => k !== key), ...(on ? [key] : [])]); addonCard(key).hidden = !on; renderAddonMenu(); }
-    if (on) { addonCard(key).classList.remove('collapsed'); addonCard(key).scrollIntoView({ block: 'nearest' }); }
+    if (!on) return;
+    const card = addonCard(key), scroll = document.querySelector('.stack-scroll');
+    scroll.insertBefore(card, $('addonAdd'));                       // 新增的卡片放到最下面，並記住排序
+    ui.order = [...scroll.querySelectorAll(':scope > .card')].map(c => c.querySelector('.card-title')?.textContent);
+    lsSet(LS_UI, ui);
+    card.classList.remove('collapsed'); card.scrollIntoView({ block: 'nearest' });
   }
   function renderAddonMenu() {
     const keys = Object.keys(ADDON_NAMES).filter(k => !addonOn(k) && (k !== 'hires' || state.hiresSupported));
@@ -949,7 +955,10 @@
     $('addonAdd').hidden = !keys.length;
   }
   function setupAddons() {
-    document.querySelector('.stack-scroll').appendChild($('addonAdd'));   // 卡片排序會把卡片搬到後面，按鈕放回最底
+    const scroll = document.querySelector('.stack-scroll');
+    scroll.appendChild($('addonAdd'));   // 卡片排序會把卡片搬到後面，按鈕放回最底
+    // 存過的順序裡沒有的卡片（之後才加的功能）排在最下面，不要被擠到最上面
+    if (ui.order) for (const card of scroll.querySelectorAll(':scope > .card')) if (!ui.order.includes(card.querySelector('.card-title')?.textContent)) scroll.insertBefore(card, $('addonAdd'));
     for (const key of Object.keys(ADDON_NAMES)) addonCard(key).querySelector('.addon-x').onclick = () => setAddon(key, false);
     for (const key of lsGet(LS_ADDONS, [])) if (addonCard(key)) addonCard(key).hidden = false;
     $('btnAddon').onclick = () => { $('addonMenu').hidden = !$('addonMenu').hidden; };
@@ -1104,7 +1113,6 @@
   }
   // ================================================================ layout: splitters / collapse
   function setupLayout() {
-    const ui = lsGet(LS_UI, {});
     const layout = $('layout');
     if (ui.fourStackW) layout.style.setProperty('--stack-w', ui.fourStackW + 'px');
     if (ui.fourPromptW) layout.style.setProperty('--prompt-w', ui.fourPromptW + 'px');
