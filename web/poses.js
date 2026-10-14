@@ -14,10 +14,14 @@
   };
   const hint = (text) => { $('poseHint').textContent = text; };
 
+  /** 目前放在提示詞裡的那張：有好幾張的描述都對得上時（一張是另一張的開頭），取描述最長的 */
+  const active = () => poses.filter(p => HY().hasPart($('pos'), p.text)).sort((a, b) => b.text.length - a.text.length)[0] || null;
+
+  /** 一次一張：先把目前那張整段拿掉，再放選的這張；點目前那張 = 取消 */
   function select(p) {
-    const ta = $('pos'), on = HY().hasPart(ta, p.text);
-    for (const other of poses) if (HY().hasPart(ta, other.text)) HY().removePart(ta, other.text);   // 一次一張
-    if (!on) HY().insertPart(ta, p.text);
+    const ta = $('pos'), cur = active();
+    if (cur) HY().removePart(ta, cur.text);
+    if (cur !== p) HY().insertPart(ta, p.text);
     render();
   }
 
@@ -48,11 +52,11 @@
   }
 
   function render() {
-    const list = $('poseList'), ta = $('pos');
+    const list = $('poseList'), cur = active();
     list.replaceChildren();
     for (const p of filtered()) {
       const row = document.createElement('div');
-      row.className = 'pose-item' + (HY().hasPart(ta, p.text) ? ' selected' : '') + (p === flash ? ' flash' : '');
+      row.className = 'pose-item' + (p === cur ? ' selected' : '') + (p === flash ? ' flash' : '');
       if (p === editing) {
         row.classList.add('editing');
         const name = document.createElement('input'); name.type = 'text'; name.className = 'pose-edit-name'; name.value = p.name; name.placeholder = '名稱，例如：坐在窗邊回頭看';
