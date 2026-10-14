@@ -12,7 +12,7 @@
     const q = $('poseSearch').value.trim().toLowerCase();
     return poses.filter(p => !q || p.name.toLowerCase().includes(q) || p.text.toLowerCase().includes(q));
   };
-  const hint = (text) => { $('poseHint').textContent = text; };
+  const hint = (text, ok = false) => { $('poseHint').textContent = text; $('poseHint').classList.toggle('ok', ok); };
   /** 存檔格式：「單字, 單字」— 逗號後一個空白，拿掉多的空白、空的一段和最後的逗號；換行也當逗號 */
   const tidy = (text) => text.split(/[,\n]/).map(t => t.trim().replace(/\s+/g, ' ')).filter(Boolean).join(', ');
 
@@ -29,7 +29,7 @@
 
   async function save() {
     const r = await fetch('/yomu/api/poses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(poses) }).then(r => r.json()).catch(() => null);
-    hint(r?.ok ? '' : '存檔失敗，請確認 ComfyUI 有在執行');
+    if (!r?.ok) hint('存檔失敗，請確認 ComfyUI 有在執行');
   }
 
   /** 把提示詞裡反白的那段直接存成一張，名稱欄位直接打開讓你取名 */
@@ -125,6 +125,34 @@
     }
   }
 
+  function exportPoses() {
+    if (!poses.length) return hint('還沒有姿勢卡可以匯出');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(poses, null, 2)], { type: 'application/json' }));
+    a.download = 'yomu-poses.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    hint(`已匯出 ${poses.length} 張`, true);
+  }
+
+  /** 加進現有的清單，描述重複的跳過，不蓋掉原本的 */
+  async function importPoses(file) {
+    let list = null;
+    try { list = JSON.parse(await file.text()); } catch {}
+    if (!Array.isArray(list)) return hint('這個檔案不是姿勢卡');
+    let added = 0, skipped = 0;
+    for (const p of list) {
+      const text = tidy(String(p?.text || ''));
+      if (!text) continue;
+      if (poses.some(x => x.text === text)) { skipped++; continue; }
+      poses.push({ name: String(p.name || '').trim(), text });
+      added++;
+    }
+    if (added) save();
+    render();
+    hint(`匯入 ${added} 張` + (skipped ? `，略過 ${skipped} 張重複的` : ''), true);
+  }
+
   /** 生成時把 {隨機姿勢} 換掉用：有搜尋字就從搜尋結果抽 */
   function pickRandom() {
     const pool = filtered();
@@ -137,6 +165,9 @@
   window.addEventListener('DOMContentLoaded', async () => {
     $('poseSearch').addEventListener('input', render);
     $('btnPoseAdd').onclick = addFromSelection;
+    $('btnPoseExport').onclick = exportPoses;
+    $('btnPoseImport').onclick = () => $('poseImportFile').click();
+    $('poseImportFile').onchange = () => { const f = $('poseImportFile').files[0]; $('poseImportFile').value = ''; if (f) importPoses(f); };
     $('poseRandom').onchange = () => (($('poseRandom').checked ? HY().insertPart : HY().removePart)($('pos'), TOKEN));
     $('pos').addEventListener('input', () => { $('poseRandom').checked = $('pos').value.includes(TOKEN); hint(''); if (!editing) render(); });
     poses = await fetch('/yomu/api/poses').then(r => r.json()).catch(() => []);
