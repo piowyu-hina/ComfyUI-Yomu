@@ -4,27 +4,23 @@
   const $ = (id) => document.getElementById(id);
   const HY = () => window.HY;
   const TOKEN = '{隨機姿勢}';
-  let official = [], mine = [], maintainer = false;
+  let poses = [];
 
-  const all = () => [...official, ...mine];
-  const isOfficial = (p) => official.includes(p);
   const filtered = () => {
     const q = $('poseSearch').value.trim().toLowerCase();
-    return all().filter(p => !q || p.name.toLowerCase().includes(q) || p.text.toLowerCase().includes(q));
+    return poses.filter(p => !q || p.name.toLowerCase().includes(q) || p.text.toLowerCase().includes(q));
   };
 
   function select(p) {
     const ta = $('pos'), on = HY().hasPart(ta, p.text);
-    for (const other of all()) if (HY().hasPart(ta, other.text)) HY().removePart(ta, other.text);   // 一次一張
+    for (const other of poses) if (HY().hasPart(ta, other.text)) HY().removePart(ta, other.text);   // 一次一張
     if (!on) HY().insertPart(ta, p.text);
     render();
   }
 
-  /** 維護者存檔時連官方的一起送（改了 poses.json，要 commit 才會給別人） */
   async function save() {
-    const body = maintainer ? { mine, official } : { mine };
-    const r = await fetch('/yomu/api/poses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()).catch(() => null);
-    if (!r?.ok) HY().toast('姿勢卡存檔失敗' + (r?.msg ? '：' + r.msg : ''), true);
+    const r = await fetch('/yomu/api/poses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(poses) }).then(r => r.json()).catch(() => null);
+    if (!r?.ok) HY().toast('姿勢卡存檔失敗', true);
     render();
   }
 
@@ -33,8 +29,8 @@
     const ta = $('pos');
     const text = ta.value.slice(ta.selectionStart, ta.selectionEnd).replace(/^[\s,]+|[\s,]+$/g, '');
     if (!text) return HY().toast('先在正面提示詞選取要存的那段', true);
-    if (all().some(p => p.text === text)) return HY().toast('已經有這張姿勢卡了');
-    mine.push({ name: '', text });
+    if (poses.some(p => p.text === text)) return HY().toast('已經有這張姿勢卡了');
+    poses.push({ name: '', text });
     save();
     HY().toast('已存成姿勢卡，按 ✎ 可以取名字');
   }
@@ -50,15 +46,8 @@
 
   function remove(p) {
     if (!confirm(`刪除姿勢卡「${p.name || '未命名'}」？`)) return;
-    official = official.filter(x => x !== p); mine = mine.filter(x => x !== p);
+    poses = poses.filter(x => x !== p);
     save();
-  }
-
-  function makeOfficial(p) {
-    if (!p.name) return HY().toast('先按 ✎ 取個名字再設為官方', true);
-    mine = mine.filter(x => x !== p); official.push(p);
-    save();
-    HY().toast('已移到官方（poses.json），push 之後朋友更新 Yomu 就會拿到');
   }
 
   function render() {
@@ -69,15 +58,13 @@
       row.className = 'pose-item' + (HY().hasPart(ta, p.text) ? ' selected' : ''); row.title = p.text;
       const head = document.createElement('div'); head.className = 'pose-head';
       const name = document.createElement('span'); name.className = 'pose-name' + (p.name ? '' : ' unnamed'); name.textContent = p.name || '未命名';
-      const badge = document.createElement('span'); badge.className = 'pose-badge'; badge.textContent = isOfficial(p) ? '官方' : '我的';
-      head.append(name, badge);
+      head.append(name);
       const act = (label, title, fn) => {
         const b = document.createElement('button'); b.className = 'pose-act'; b.textContent = label; b.title = title;
         b.onclick = (e) => { e.stopPropagation(); fn(p); };
         head.append(b);
       };
-      if (maintainer && !isOfficial(p)) act('⬆', '設為官方（移到 poses.json）', makeOfficial);
-      if (maintainer || !isOfficial(p)) { act('✎', '修改', edit); act('🗑', '刪除', remove); }
+      act('✎', '修改', edit); act('🗑', '刪除', remove);
       const text = document.createElement('div'); text.className = 'pose-text'; text.textContent = p.text;
       row.append(head, text);
       row.onclick = () => select(p);
@@ -85,7 +72,7 @@
     }
     if (!list.children.length) {
       const e = document.createElement('div'); e.className = 'char-empty';
-      e.textContent = all().length ? '沒有符合的姿勢' : '還沒有姿勢卡。在提示詞選取一段描述，按「＋ 存成卡」。';
+      e.textContent = poses.length ? '沒有符合的姿勢' : '還沒有姿勢卡。在提示詞選取一段描述，按「＋ 存成卡」。';
       list.append(e);
     }
   }
@@ -104,8 +91,7 @@
     $('btnPoseAdd').onclick = addFromSelection;
     $('poseRandom').onchange = () => (($('poseRandom').checked ? HY().insertPart : HY().removePart)($('pos'), TOKEN));
     $('pos').addEventListener('input', () => { $('poseRandom').checked = $('pos').value.includes(TOKEN); render(); });
-    const d = await fetch('/yomu/api/poses').then(r => r.json()).catch(() => ({ official: [], mine: [] }));
-    official = d.official; mine = d.mine; maintainer = !!d.maintainer;
+    poses = await fetch('/yomu/api/poses').then(r => r.json()).catch(() => []);
     $('poseRandom').checked = $('pos').value.includes(TOKEN);
     render();
   });
