@@ -37,6 +37,12 @@ async def serve_index(request):
     return web.FileResponse(os.path.join(WEB_DIR, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
+@routes.get("/yomu/icon.png")
+async def serve_icon(request):
+    """Edge / Chrome 的 App 視窗用網頁圖示當視窗和工作列圖示（沒裝 Electron 的人都是這種視窗）"""
+    return web.FileResponse(os.path.join(BASE_DIR, "assets", "yomu.png"))
+
+
 @routes.get("/yomu/static/{name}")
 async def serve_static(request):
     name = os.path.basename(request.match_info["name"])

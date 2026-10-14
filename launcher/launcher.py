@@ -385,6 +385,7 @@ PAGE = r"""<!DOCTYPE html>
 <html lang="zh-TW"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Yomu 啟動器</title>
+<link rel="icon" href="/icon.png">
 <style>
 :root{--bg:#1b1b1b;--bg2:#202020;--card:#2b2b2b;--line:#3a3a3a;--line2:#474747;--text:#e8e8e8;--muted:#9a9a9a;--accent:#36b9e6;--ok:#4cc38a;--warn:#f0b429;--danger:#d9534f}
 *{box-sizing:border-box;margin:0;padding:0}
