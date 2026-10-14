@@ -451,6 +451,7 @@ button:disabled { opacity: .55; cursor: wait; }
 .pose-item { padding: 7px 9px; background: var(--input); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 .pose-item:hover { border-color: var(--line-2); }
 .pose-item.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pose-item.dragging { opacity: .4; }
 .pose-head { display: flex; align-items: center; gap: 6px; }
 .pose-name.unnamed { color: var(--muted); font-style: italic; }
 .pose-name { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

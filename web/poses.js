@@ -95,6 +95,25 @@
       const text = document.createElement('div'); text.className = 'pose-text'; text.textContent = p.text;
       row.append(head, text);
       row.onclick = () => { deleting = null; select(p); };
+      // 拖曳排序：拖的時候直接搬 DOM，放開再照畫面順序存；搜尋中只看得到一部分，不給拖
+      row._pose = p;
+      row.draggable = !$('poseSearch').value.trim();
+      row.ondragstart = (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/x-yomu-pose', ''); row.classList.add('dragging'); };
+      row.ondragend = () => {
+        row.classList.remove('dragging');
+        const order = [...list.querySelectorAll('.pose-item')].map(r => r._pose);
+        if (order.some((x, i) => x !== poses[i])) { poses = order; save(); }
+        render();
+      };
+      row.ondragover = (e) => {
+        const dragged = list.querySelector('.pose-item.dragging');
+        if (!dragged) return;
+        e.preventDefault();
+        if (dragged === row) return;
+        const r = row.getBoundingClientRect();
+        list.insertBefore(dragged, e.clientY > r.top + r.height / 2 ? row.nextSibling : row);
+      };
+      row.ondrop = (e) => { if (list.querySelector('.pose-item.dragging')) { e.preventDefault(); e.stopPropagation(); } };
       list.append(row);
       if (p === flash) setTimeout(() => row.scrollIntoView({ block: 'nearest' }));
     }
