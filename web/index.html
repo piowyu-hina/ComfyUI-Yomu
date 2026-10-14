@@ -10,7 +10,6 @@
 
 <!-- ===== 頂列：品牌、分頁、狀態、工具 ===== -->
 <header class="topbar">
-  <div class="brand"><span class="brand-badge">✦</span><span class="brand-title">Yomu</span></div>
   <nav class="tabs" id="modeTabs">
     <button class="tab active" data-mode="txt2img">文生圖</button>
     <button class="tab" data-mode="img2img">圖生圖</button>
@@ -107,23 +106,6 @@
         </div>
       </section>
 
-      <!-- 角色卡 -->
-      <section class="card">
-        <header class="card-head"><span class="card-title">角色</span><button class="chev" data-collapse>▾</button></header>
-        <div class="card-body">
-          <div id="charSetup" hidden>
-            <div class="muted small">5,000 多個動漫角色的中文名、標籤與縮圖（約 125 MB，從 Hugging Face 下載）。點角色卡就把標籤加進正面提示詞。</div>
-            <button class="mini" id="btnCharDownload">⬇ 下載角色資料包</button>
-          </div>
-          <div class="char-update" id="charUpdate" hidden><span id="charUpdateText"></span><button class="mini" id="btnCharUpdate">⬇ 更新</button></div>
-          <div class="muted small" id="charDlState"></div>
-          <div id="charBrowser" hidden>
-            <input type="text" id="charSearch" placeholder="搜尋角色或作品（中文 / 英文）">
-            <div class="char-grid" id="charGrid"></div>
-          </div>
-        </div>
-      </section>
-
       <!-- Sampler -->
       <section class="card">
         <header class="card-head"><span class="card-title">取樣</span><button class="chev" data-collapse>▾</button></header>
@@ -169,34 +151,6 @@
         </div>
       </section>
 
-      <!-- Addon: Hires Fix -->
-      <section class="card addon">
-        <header class="card-head">
-          <span class="card-title">Hires Fix</span>
-          <span class="muted small" id="hiresTarget"></span>
-          <button class="chev" data-collapse>▾</button>
-        </header>
-        <div class="card-body" id="hiresBody">
-          <label class="check"><input type="checkbox" id="hiresOn"><span>啟用 Hires Fix</span></label>
-          <div class="field"><label>放大模型</label><select id="hiresModel"></select></div>
-          <div class="field">
-            <div class="label-row"><label>倍率</label><b id="hiresScaleVal">2.0</b></div>
-            <input type="range" id="hiresScale" min="1.25" max="4" step="0.25" value="2">
-          </div>
-          <div class="row">
-            <div class="field grow">
-              <div class="label-row"><label>步數</label><b id="hiresStepsVal">20</b></div>
-              <input type="range" id="hiresSteps" min="1" max="60" step="1" value="20">
-            </div>
-            <div class="field grow">
-              <div class="label-row"><label>Denoise</label><b id="hiresDenoiseVal">0.30</b></div>
-              <input type="range" id="hiresDenoise" min="0.05" max="1" step="0.01" value="0.3">
-            </div>
-          </div>
-          <label class="check" id="fieldHiresCn" title="ControlNet Tile：重畫時強迫每一塊跟放大前一樣，只補細節不移動五官。開了 Denoise 可以放心開到 0.5" hidden><input type="checkbox" id="hiresCn" checked><span>鎖定結構（ControlNet Tile）</span></label>
-        </div>
-      </section>
-
       <!-- Seed -->
       <section class="card">
         <header class="card-head"><span class="card-title">Seed</span><button class="chev" data-collapse>▾</button></header>
@@ -223,6 +177,57 @@
         </div>
       </section>
 
+      <!-- Addon: Hires Fix -->
+      <section class="card addon" data-addon="hires" hidden>
+        <header class="card-head">
+          <span class="card-title">Hires Fix</span>
+          <span class="muted small" id="hiresTarget"></span>
+          <button class="addon-x" title="移除（關閉 Hires Fix）">×</button>
+          <button class="chev" data-collapse>▾</button>
+        </header>
+        <div class="card-body" id="hiresBody">
+          <input type="checkbox" id="hiresOn" hidden>
+          <div class="field"><label>放大模型</label><select id="hiresModel"></select></div>
+          <div class="field">
+            <div class="label-row"><label>倍率</label><b id="hiresScaleVal">2.0</b></div>
+            <input type="range" id="hiresScale" min="1.25" max="4" step="0.25" value="2">
+          </div>
+          <div class="row">
+            <div class="field grow">
+              <div class="label-row"><label>步數</label><b id="hiresStepsVal">20</b></div>
+              <input type="range" id="hiresSteps" min="1" max="60" step="1" value="20">
+            </div>
+            <div class="field grow">
+              <div class="label-row"><label>Denoise</label><b id="hiresDenoiseVal">0.30</b></div>
+              <input type="range" id="hiresDenoise" min="0.05" max="1" step="0.01" value="0.3">
+            </div>
+          </div>
+          <label class="check" id="fieldHiresCn" title="ControlNet Tile：重畫時強迫每一塊跟放大前一樣，只補細節不移動五官。開了 Denoise 可以放心開到 0.5" hidden><input type="checkbox" id="hiresCn" checked><span>鎖定結構（ControlNet Tile）</span></label>
+        </div>
+      </section>
+
+      <!-- 角色卡 -->
+      <section class="card" data-addon="char" hidden>
+        <header class="card-head"><span class="card-title">角色</span><button class="addon-x" title="移除這張卡片">×</button><button class="chev" data-collapse>▾</button></header>
+        <div class="card-body">
+          <div id="charSetup" hidden>
+            <div class="muted small">5,000 多個動漫角色的中文名、標籤與縮圖（約 125 MB，從 Hugging Face 下載）。點角色卡就把標籤加進正面提示詞。</div>
+            <button class="mini" id="btnCharDownload">⬇ 下載角色資料包</button>
+          </div>
+          <div class="char-update" id="charUpdate" hidden><span id="charUpdateText"></span><button class="mini" id="btnCharUpdate">⬇ 更新</button></div>
+          <div class="muted small" id="charDlState"></div>
+          <div id="charBrowser" hidden>
+            <input type="text" id="charSearch" placeholder="搜尋角色或作品（中文 / 英文）">
+            <label class="check char-random" title="不會改到提示詞欄位，抽到誰會顯示在通知，也會記在圖片的參數裡"><input type="checkbox" id="charRandom"><span>🎲 每次生成隨機抽一個角色（有搜尋就從搜尋結果抽）</span></label>
+            <div class="char-grid" id="charGrid"></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="addon-add" id="addonAdd">
+        <button class="tbtn" id="btnAddon">＋ 新增</button>
+        <div class="addon-menu" id="addonMenu" hidden></div>
+      </div>
     </div>
 
 

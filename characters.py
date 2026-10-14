@@ -3,7 +3,8 @@
 5000 多個動漫角色的中文名、Danbooru 標籤與縮圖。按「下載角色資料包」才會下載，存在 cache/characters/。
 資料包的中文名是簡體，用 characters_s2t.json（逐字對照，拿掉了「后、里、干」這類一字多義的字）轉成繁體；搜尋字也一樣轉，打簡體繁體都找得到。
 
-  GET  /yomu/api/characters?q=&limit=     搜尋角色（中文名 / 標籤；空字串 = 最熱門）
+  GET  /yomu/api/characters?q=&offset=&limit=   搜尋角色（中文名 / 標籤；空字串 = 最熱門）
+  GET  /yomu/api/characters/random?q=     隨機抽一個（有 q 從搜尋結果抽，沒有就從熱門角色抽）
   GET  /yomu/api/characters/thumb?id=     縮圖（webp）
   GET  /yomu/api/characters/status        資料包狀態與下載進度
   GET  /yomu/api/characters/check         Hugging Face 上有沒有新版（打開 Yomu 時問一次）
@@ -15,6 +16,7 @@ import csv
 import gzip
 import json
 import os
+import random
 import re
 import shutil
 import threading
@@ -34,6 +36,7 @@ THUMB_DIR = os.path.join(CHAR_DIR, "thumbs")
 with open(os.path.join(BASE_DIR, "characters_s2t.json"), encoding="utf-8") as _f:
     S2T = str.maketrans(json.load(_f))
 
+RANDOM_MIN_COUNT = 300     # 沒搜尋時只從 Danbooru 300 張以上的角色抽，太冷門的模型多半畫不出來
 _job = {"running": False, "done": 0, "total": 0, "error": None}
 _chars = None
 _lock = threading.Lock()
@@ -122,11 +125,11 @@ def _load():
         return _chars or []
 
 
-def search(q, limit):
+def search(q, limit, offset=0):
     rows = _load()
     q = q.strip().lower().replace("_", " ").translate(S2T)
     if not q:
-        return rows[:limit]
+        return rows[offset:offset + limit]
     starts, contains = [], []
     for row in rows:
         tag, name, series = row[0], row[1].lower(), row[2].lower()
@@ -134,17 +137,27 @@ def search(q, limit):
             starts.append(row)
         elif q in tag or q in name or q in series:
             contains.append(row)
-    return (starts + contains)[:limit]
+    return (starts + contains)[offset:offset + limit]
 
 
 def register(routes):
     @routes.get("/yomu/api/characters")
     async def characters(request):
         limit = min(int(request.query.get("limit", "60")), 200)
+        offset = max(int(request.query.get("offset", "0")), 0)
         return web.json_response([
             {"tag": t, "name": n, "series": s, "id": m, "count": c}
-            for t, n, s, m, c in search(request.query.get("q", ""), limit)
+            for t, n, s, m, c in search(request.query.get("q", ""), limit, offset)
         ])
+
+    @routes.get("/yomu/api/characters/random")
+    async def random_character(request):
+        q = request.query.get("q", "")
+        pool = search(q, len(_load())) if q.strip() else [r for r in _load() if r[4] >= RANDOM_MIN_COUNT]
+        if not pool:
+            return web.json_response({})
+        t, n, s, m, c = random.choice(pool)
+        return web.json_response({"tag": t, "name": n, "series": s, "id": m, "count": c})
 
     @routes.get("/yomu/api/characters/thumb")
     async def thumb(request):

@@ -33,7 +33,7 @@ routes = PromptServer.instance.routes
 
 @routes.get("/yomu")
 async def serve_index(request):
-    return web.FileResponse(os.path.join(WEB_DIR, "index.html"))
+    return web.FileResponse(os.path.join(WEB_DIR, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
 @routes.get("/yomu/static/{name}")

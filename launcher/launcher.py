@@ -391,12 +391,12 @@ PAGE = r"""<!DOCTYPE html>
 [hidden]{display:none!important}
 html,body{height:100%}
 body{background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif;display:flex;flex-direction:column;user-select:none}
-header{height:48px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 18px;background:var(--bg2);border-bottom:1px solid var(--line)}
-.logo{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),#c084fc);color:#fff;font-weight:700;font-size:13px}
-header b{font-size:15px;font-weight:600}
-header .muted{margin-left:auto;font-size:12.5px}
 .muted{color:var(--muted)}
 main{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding:16px 18px 12px}
+.hero{display:flex;align-items:center;gap:16px;padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(120deg,rgba(150,30,60,.38),rgba(43,43,43,.6) 55%,rgba(54,185,230,.14))}
+.hero img{width:60px;height:60px;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.hero-title{font-size:20px;font-weight:700;letter-spacing:.02em}
+.hero-sub{color:#cfcfcf;font-size:13px;margin-top:2px}
 .svc{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
 .dot{width:10px;height:10px;border-radius:50%;background:#5a5a5a;flex-shrink:0}
 .dot.running,.dot.external,.dot.ready{background:var(--ok);box-shadow:0 0 8px rgba(76,195,138,.6)}
@@ -404,6 +404,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding:16p
 @keyframes blink{50%{opacity:.3}}
 .info{flex:1;min-width:0}
 .name{font-size:15px;font-weight:600}
+.ver{color:var(--muted);font-size:12.5px;font-weight:400;margin-left:4px}
 .sub{color:var(--muted);font-size:12.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .check{display:inline-flex;align-items:center;gap:6px;margin-top:6px;color:var(--muted);font-size:12.5px;cursor:pointer}
 .check input{accent-color:var(--accent)}
@@ -425,11 +426,11 @@ main:not(.has-update) .update{display:none}
 pre{flex:1;min-height:0;overflow:auto;padding:12px 14px;font:12px/1.5 Consolas,"Cascadia Mono","Microsoft JhengHei",monospace;white-space:pre-wrap;word-break:break-all;color:#c9d1d9;background:#161616;user-select:text}
 footer{color:var(--muted);font-size:12px;text-align:center}
 </style></head><body>
-<header><span class="logo">Y</span><b>Yomu 啟動器</b><span class="muted" id="ver"></span></header>
 <main>
+  <header class="hero"><img src="/icon.png" alt=""><div><div class="hero-title">Yomu</div><div class="hero-sub" id="summary">查詢中…</div></div></header>
   <section class="svc">
     <span class="dot" id="dot"></span>
-    <div class="info"><div class="name">ComfyUI</div><div class="sub" id="stateText">查詢中…</div></div>
+    <div class="info"><div class="name">ComfyUI <span class="ver" id="ver"></span></div><div class="sub" id="stateText">查詢中…</div></div>
     <div class="actions">
       <button class="main-btn primary" id="btnToggle">▶ 啟動</button>
       <button class="update off" id="btnUpdateComfy" title="更新 ComfyUI 本體與其他自訂節點（git pull + pip install），不含 Yomu">⬆ 更新</button>
@@ -437,7 +438,7 @@ footer{color:var(--muted);font-size:12px;text-align:center}
   </section>
   <section class="svc">
     <span class="dot" id="yomuDot"></span>
-    <div class="info"><div class="name">Yomu</div><div class="sub" id="yomuText">等待 ComfyUI 啟動</div>
+    <div class="info"><div class="name">Yomu</div>
       <label class="check"><input type="checkbox" id="autoOpen" checked>ComfyUI 啟動完成後自動開啟</label></div>
     <div class="actions">
       <button class="main-btn primary" id="btnYomu">✦ 開啟</button>
@@ -459,7 +460,8 @@ async function refresh(){
   try{
     const s=await api('/api/status');
     state=s.state; $('dot').className='dot '+state;
-    $('ver').textContent=s.version?'ComfyUI v'+s.version:'';
+    $('ver').textContent=s.version?'v'+s.version:'';
+    $('summary').textContent={stopped:'ComfyUI 還沒啟動，按「▶ 啟動」開始',starting:'ComfyUI 啟動中，馬上就好…',running:'一切就緒，可以開始創作了',external:'一切就緒，可以開始創作了'}[state];
     $('stateText').textContent=[names[state],s.pid&&`PID ${s.pid}`,s.uptime!=null&&`${Math.floor(s.uptime/60)} 分 ${s.uptime%60} 秒`].filter(Boolean).join('  ·  ');
     const up=state==='running'||state==='external';
     const running=state!=='stopped';
@@ -467,7 +469,6 @@ async function refresh(){
     $('btnToggle').className='main-btn '+(running?'danger':'primary');
     $('btnYomu').disabled=!up;
     $('yomuDot').className='dot'+(up?' ready':'');
-    $('yomuText').textContent=up?'可以開啟':'等待 ComfyUI 啟動';
     if(up&&wantOpen){wantOpen=false;api('/api/open-yomu','POST');}
     const pre=$('log');const atBottom=pre.scrollTop+pre.clientHeight>=pre.scrollHeight-8;
     const t=await (await fetch('/api/log')).text();
@@ -551,6 +552,9 @@ class Handler(BaseHTTPRequestHandler):
         seen()
         if path == "/":
             return self._send(200, PAGE, "text/html; charset=utf-8")
+        if path == "/icon.png":
+            with open(os.path.join(YOMU_DIR, "assets", "yomu.png"), "rb") as f:
+                return self._send(200, f.read(), "image/png")
         if path == "/api/status":
             return self._send(200, json.dumps(status()))
         if path == "/api/log":

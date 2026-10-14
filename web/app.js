@@ -33,6 +33,7 @@
     ws: null,
     stopping: false,
     submitting: false,
+    hiresSupported: false,    // 目前工作流有沒有 @hires_* 節點
   };
 
   // ================================================================ utils
@@ -183,7 +184,7 @@
     fillCkptSelect(ownModel && ckptListAll(name).includes(ownModel) ? ownModel : undefined);
     $('clipskip').closest('.field').hidden = !slotId(t, 'clipskip');
     $('fieldFp8').hidden = !('weight_dtype' in (t[slotId(t, 'ckpt')]?.inputs || {})) || !!slotId(t, 'ckpt_low');   // 只有 UNETLoader 型範本有 fp8 可選；14B 高低噪兩段的檔案本來就是 fp8，不給選
-    $('hiresOn').closest('.card').hidden = !slotId(t, 'hires_sampler');
+    state.hiresSupported = !!slotId(t, 'hires_sampler');
     $('fieldEndImage').hidden = !slotId(t, 'load_end_image');
     $('fieldShrink').hidden = !slotId(t, 'shrink');
     $('fieldHiresCn').hidden = !slotId(t, 'hires_cn');
@@ -465,6 +466,8 @@
     try {
       const params = collectParams({ rollSeed: true });
       if (!params.ckpt) throw new Error('請先選擇 Checkpoint');
+      const picked = addonOn('char') ? await HYCharacters.pickRandom() : null;   // 隨機角色：只加在這次送出的提示詞，不動欄位
+      if (picked) { params.pos = picked.text + ', ' + params.pos; params.character = picked.name; }
       if (params.mode === 'inpaint') {
         if (!state.source || !HYInpaint.loaded) throw new Error('請先放入來源圖片');
         if (!HYInpaint.hasMask()) throw new Error('還沒塗遮罩：在右邊圖片上把要重畫的地方塗紅');
@@ -492,6 +495,7 @@
       }
       state.pending.set(out.prompt_id, { params: p, saveNodeId, titles, mode: p.mode });
       state.lastSeed = p.seed;
+      if (picked) toast('🎲 這張抽到：' + picked.name);
       
       updateGenerateBtn();
       saveParams();
@@ -919,10 +923,40 @@
   }
   function syncHires() {
     const on = $('hiresOn').checked;
-    $('hiresOn').closest('.card').classList.toggle('off', !on);
+    addonCard('hires').hidden = !state.hiresSupported || !on;
+    renderAddonMenu();
     const s = parseFloat($('hiresScale').value);
     $('hiresTarget').textContent = on ? `→ ${round8($('width').value * s)}×${round8($('height').value * s)}` : '';
   }
+  // ================================================================ 左欄「＋ 新增」的卡片
+  const LS_ADDONS = 'yomu.addons';
+  const ADDON_NAMES = { hires: 'Hires Fix', char: '角色' };
+  const addonCard = (key) => document.querySelector(`.stack [data-addon="${key}"]`);
+  // Hires Fix 加上去 = 啟用（跟著參數存、圖片拖回來也會還原）；其他卡片記在 localStorage
+  const addonOn = (key) => (key === 'hires' ? $('hiresOn').checked : lsGet(LS_ADDONS, []).includes(key));
+  function setAddon(key, on) {
+    if (key === 'hires') { $('hiresOn').checked = on; syncHires(); saveParams(); }
+    else { lsSet(LS_ADDONS, [...lsGet(LS_ADDONS, []).filter(k => k !== key), ...(on ? [key] : [])]); addonCard(key).hidden = !on; renderAddonMenu(); }
+    if (on) { addonCard(key).classList.remove('collapsed'); addonCard(key).scrollIntoView({ block: 'nearest' }); }
+  }
+  function renderAddonMenu() {
+    const keys = Object.keys(ADDON_NAMES).filter(k => !addonOn(k) && (k !== 'hires' || state.hiresSupported));
+    $('addonMenu').replaceChildren(...keys.map(k => {
+      const b = document.createElement('button'); b.textContent = ADDON_NAMES[k];
+      b.onclick = () => { $('addonMenu').hidden = true; setAddon(k, true); };
+      return b;
+    }));
+    $('addonAdd').hidden = !keys.length;
+  }
+  function setupAddons() {
+    document.querySelector('.stack-scroll').appendChild($('addonAdd'));   // 卡片排序會把卡片搬到後面，按鈕放回最底
+    for (const key of Object.keys(ADDON_NAMES)) addonCard(key).querySelector('.addon-x').onclick = () => setAddon(key, false);
+    for (const key of lsGet(LS_ADDONS, [])) if (addonCard(key)) addonCard(key).hidden = false;
+    $('btnAddon').onclick = () => { $('addonMenu').hidden = !$('addonMenu').hidden; };
+    document.addEventListener('pointerdown', (e) => { if (!$('addonAdd').contains(e.target)) $('addonMenu').hidden = true; });
+    renderAddonMenu();
+  }
+
   function switchMode(mode) {
     state.mode = mode;
     document.querySelectorAll('#modeTabs .tab').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
@@ -1694,6 +1728,7 @@
   (async () => {
     bind();
     setupLayout();
+    setupAddons();
     setupHighlight();
     setupAutocomplete('pos', 'acPopup');
     setupAutocomplete('neg', 'acPopupNeg');

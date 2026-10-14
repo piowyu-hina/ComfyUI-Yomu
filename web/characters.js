@@ -7,7 +7,8 @@
   const promptText = (tag) => tag.replace(/_/g, ' ').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
   const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const tokenRe = (tag) => new RegExp(`(^|[,\\n])[ \\t]*${reEsc(promptText(tag))}[ \\t]*(?=,|\\n|$),?[ \\t]*`);
-  let seq = 0, timer = null, checked = false;
+  const PAGE = 60;
+  let seq = 0, timer = null, checked = false, offset = 0, end = false, loading = false;
 
   const inPrompt = (tag) => tokenRe(tag).test($('pos').value);
 
@@ -26,9 +27,9 @@
     document.querySelectorAll('#charGrid .char-card').forEach(card => card.classList.toggle('selected', inPrompt(card.dataset.tag)));
   }
 
-  function render(list) {
+  function render(list, append) {
     const grid = $('charGrid');
-    grid.replaceChildren();
+    if (!append) { grid.replaceChildren(); grid.scrollTop = 0; }
     for (const c of list) {
       const card = document.createElement('button');
       card.type = 'button'; card.className = 'char-card'; card.dataset.tag = c.tag;
@@ -41,14 +42,21 @@
       card.onclick = () => { toggle(c.tag); syncSelected(); };
       grid.append(card);
     }
-    if (!list.length) { const e = document.createElement('div'); e.className = 'char-empty'; e.textContent = '沒有符合的角色'; grid.append(e); }
+    if (!append && !list.length) { const e = document.createElement('div'); e.className = 'char-empty'; e.textContent = '沒有符合的角色'; grid.append(e); }
     syncSelected();
   }
 
-  async function search() {
-    const my = ++seq;
-    const list = await fetch('/yomu/api/characters?limit=60&q=' + encodeURIComponent($('charSearch').value.trim())).then(r => r.json()).catch(() => []);
-    if (my === seq) render(list);
+  /** append = 捲到底載入下一頁 */
+  async function search(append = false) {
+    if (append && (end || loading)) return;
+    const my = append ? seq : ++seq;
+    if (!append) { offset = 0; end = false; }
+    loading = true;
+    const p = new URLSearchParams({ q: $('charSearch').value.trim(), offset, limit: PAGE });
+    const list = await fetch('/yomu/api/characters?' + p).then(r => r.json()).catch(() => []);
+    if (my !== seq) return;
+    loading = false; offset += list.length; end = list.length < PAGE;
+    render(list, append);
   }
 
   async function refreshStatus() {
@@ -74,10 +82,21 @@
     refreshStatus();
   }
 
+  /** 生成時用：開了隨機就抽一個（有搜尋字就從搜尋結果抽） */
+  async function pickRandom() {
+    if (!$('charRandom').checked) return null;
+    const c = await fetch('/yomu/api/characters/random?q=' + encodeURIComponent($('charSearch').value.trim())).then(r => r.json()).catch(() => null);
+    return c?.tag ? { text: promptText(c.tag), name: c.name + (c.series ? `（${c.series}）` : '') } : null;
+  }
+  window.HYCharacters = { pickRandom };
+
   window.addEventListener('DOMContentLoaded', () => {
+    $('charRandom').checked = HY().lsGet('yomu.charRandom', false);
+    $('charRandom').onchange = () => HY().lsSet('yomu.charRandom', $('charRandom').checked);
     $('btnCharDownload').onclick = download;
     $('btnCharUpdate').onclick = download;
     $('charSearch').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 150); });
+    $('charGrid').addEventListener('scroll', (e) => { const g = e.target; if (g.scrollTop + g.clientHeight > g.scrollHeight - 300) search(true); });
     $('pos').addEventListener('input', syncSelected);
     refreshStatus();
   });
